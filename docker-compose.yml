@@ -1,21 +1,54 @@
 services:
+  mongo:
+    image: mongo:7
+    container_name: streamsync-mongo
+    # No host port — only reachable inside streamsync-net
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: streamsync
+    restart: unless-stopped
+    networks:
+      - streamsync-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   backend:
     build:
       context: ./backend
     container_name: streamsync-backend
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     env_file:
       - .env
     volumes:
       - uploads_data:/app/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - streamsync-net
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   frontend:
     build:
@@ -25,10 +58,22 @@ services:
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: streamsync-frontend
     ports:
-      - "80:80"
+      - "127.0.0.1:3000:80"
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - streamsync-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  streamsync-net:
+    driver: bridge
 
 volumes:
   uploads_data:
+  mongo_data:

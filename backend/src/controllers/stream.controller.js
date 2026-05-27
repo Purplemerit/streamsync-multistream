@@ -1,10 +1,12 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const Video = require('../models/Video.model');
 const Stream = require('../models/Stream.model');
 const StreamHistory = require('../models/StreamHistory.model');
 const PlatformStats = require('../models/PlatformStats.model');
 const streamManager = require('../services/stream.manager');
 const platformsConfig = require('../config/platforms.config');
+const { accountOutputKey } = require('../utils/platform.util');
+const { getDurationFromRange } = require('../utils/duration.util');
 const { createNotification, notifyAdmins } = require('../services/notification.service');
 
 // START STREAM
@@ -23,17 +25,20 @@ const startStream = async (req, res) => {
     for (const p of platforms) {
       const config = platformsConfig[p.name];
       if (!config) return res.status(400).json({ message: `Unknown platform: ${p.name}` });
+      if (!p.accountId) return res.status(400).json({ message: `Account ID missing for ${config.name}` });
       if (!p.streamKey) return res.status(400).json({ message: `Stream key missing for ${config.name}` });
       if (config.rtmpUrl === null && !p.rtmpUrl) return res.status(400).json({ message: `Stream URL missing for ${config.name}` });
 
       platformList.push({
         name: p.name,
+        accountId: p.accountId,
+        label: p.label || undefined,
         streamKey: p.streamKey,
         rtmpUrl: p.rtmpUrl || config.rtmpUrl
       });
     }
 
-    const sessionId = uuidv4();
+    const sessionId = randomUUID();
 
     const stream = await Stream.create({
       sessionId,
@@ -107,18 +112,17 @@ const stopStream = async (req, res) => {
     const stream = await Stream.findOne({ sessionId, userId: req.user.id });
     if (!stream) return res.status(404).json({ message: 'Stream session not found' });
 
-    const failedPlatforms = streamManager.getFailedPlatforms(sessionId);
+    const failedDestinations = streamManager.getFailedDestinations(sessionId);
     const stopped = streamManager.stopSession(sessionId);
     console.log(`Stream ${sessionId} stopped: ${stopped}`);
 
-    // FIX: Use { new: true } so stoppedAt is reflected in the returned doc
     await Stream.findOneAndUpdate(
       { sessionId },
       { status: 'stopped', stoppedAt: new Date() },
       { new: true }
     );
 
-    await saveHistory(sessionId, 'user_stopped', failedPlatforms);
+    await saveHistory(sessionId, 'user_stopped', failedDestinations);
 
     // ── Auto-fetch and save live stats after stream ends ──────────────────
     try {
@@ -252,8 +256,13 @@ const stopStream = async (req, res) => {
         }
 
         await LiveStats.findOneAndUpdate(
-          { user: req.user.id, stream: stream._id, platform: platformName },
-          { ...stats, snapshotAt: new Date() },
+          {
+            user: req.user.id,
+            stream: stream._id,
+            platform: platformName,
+            accountId: platform.accountId,
+          },
+          { ...stats, accountId: platform.accountId, snapshotAt: new Date() },
           { upsert: true, new: true }
         );
         console.log(`Stats saved for ${platformName}`);
@@ -304,7 +313,7 @@ const getStreamHistory = async (req, res) => {
 };
 
 // HELPER — Save history and update PlatformStats
-const saveHistory = async (sessionId, endReason, failedPlatforms = new Set()) => {
+const saveHistory = async (sessionId, endReason, failedDestinations = new Set()) => {
   try {
     const stream = await Stream.findOne({ sessionId }).populate('videoId', 'title');
     if (!stream) return;
@@ -316,7 +325,7 @@ const saveHistory = async (sessionId, endReason, failedPlatforms = new Set()) =>
       console.warn(`[saveHistory] WARNING: stoppedAt missing for session ${sessionId}. Duration may be inaccurate.`);
     }
 
-    const duration = getDuration(stream.startedAt, stopTime);
+    const duration = getDurationFromRange(stream.startedAt, stopTime);
 
     await StreamHistory.create({
       userId: stream.userId,
@@ -325,7 +334,9 @@ const saveHistory = async (sessionId, endReason, failedPlatforms = new Set()) =>
       videoTitle: stream.videoId.title,
       platformsStreamed: stream.platforms.map(p => ({
         name: p.name,
-        status: failedPlatforms.has(p.name) ? 'error' : 'success'
+        accountId: p.accountId,
+        label: p.label,
+        status: failedDestinations.has(accountOutputKey(p)) ? 'error' : 'success'
       })),
       duration,
       startedAt: stream.startedAt,
@@ -334,7 +345,9 @@ const saveHistory = async (sessionId, endReason, failedPlatforms = new Set()) =>
     });
 
     if (endReason === 'user_stopped' || endReason === 'auto_ended') {
-      const successfulPlatforms = stream.platforms.filter(p => !failedPlatforms.has(p.name));
+      const successfulPlatforms = stream.platforms.filter(
+        (p) => !failedDestinations.has(accountOutputKey(p))
+      );
       console.log(`Updating PlatformStats for ${successfulPlatforms.length} successful platform(s)`);
 
       for (const p of successfulPlatforms) {
@@ -389,15 +402,6 @@ const getAdminStreamHistory = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
-};
-
-// HELPER — Calculate duration string HH:MM:SS
-const getDuration = (start, end) => {
-  const diff = Math.floor((new Date(end) - new Date(start)) / 1000);
-  const h = Math.floor(diff / 3600).toString().padStart(2, '0');
-  const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
-  const s = (diff % 60).toString().padStart(2, '0');
-  return `${h}:${m}:${s}`;
 };
 
 module.exports = {

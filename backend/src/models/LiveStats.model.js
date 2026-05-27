@@ -5,9 +5,10 @@ const liveStatsSchema = new mongoose.Schema({
   stream: { type: mongoose.Schema.Types.ObjectId, ref: 'Stream' },
   platform: {
     type: String,
-    enum: ['youtube', 'twitch', 'facebook', 'kick', 'rumble', 'telegram', 'twitter', 'instagram', 'tiktok', 'bigo'],
+    enum: ['youtube', 'twitch', 'facebook', 'kick', 'rumble', 'telegram', 'x', 'instagram', 'tiktok', 'bigo'],
     required: true
   },
+  accountId: { type: String },
   viewers: { type: Number, default: 0 },
   likes: { type: Number, default: 0 },
   comments: { type: Number, default: 0 },

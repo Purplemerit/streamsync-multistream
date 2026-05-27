@@ -15,15 +15,15 @@ const platforms = {
     type: 'api'
   },
   kick: {
-  name: 'Kick',
-  rtmpUrl: null, // Each user has their own custom URL
-  type: 'rtmp'
-},
+    name: 'Kick',
+    rtmpUrl: null,
+    type: 'rtmp'
+  },
   rumble: {
-  name: 'Rumble',
-  rtmpUrl: 'rtmp://rtmp.rumble.com/live/',
-  type: 'rtmp'
-},
+    name: 'Rumble',
+    rtmpUrl: 'rtmp://rtmp.rumble.com/live/',
+    type: 'rtmp'
+  },
   telegram: {
     name: 'Telegram',
     rtmpUrl: 'rtmp://dc4-1.rtmp.t.me/s/',
@@ -35,10 +35,20 @@ const platforms = {
     type: 'rtmp'
   },
   instagram: {
-  name: 'Instagram Live',
-  rtmpUrl: null, // Custom URL per user like Kick
-  type: 'session'
-},
+    name: 'Instagram Live',
+    rtmpUrl: null,
+    type: 'session'
+  },
+  tiktok: {
+    name: 'TikTok',
+    rtmpUrl: 'rtmp://push-rtmp-global.tiktok.com/live/',
+    type: 'session'
+  },
+  bigo: {
+    name: 'BIGO LIVE',
+    rtmpUrl: 'rtmp://livepush.bigo.tv/live/',
+    type: 'session'
+  },
 };
 
 module.exports = platforms;

@@ -19,6 +19,8 @@ const streamSchema = new mongoose.Schema({
   platforms: [
     {
       name: { type: String, required: true },
+      accountId: { type: String, required: true },
+      label: { type: String },
       streamKey: { type: String, required: true },
       rtmpUrl: { type: String },
       status: {

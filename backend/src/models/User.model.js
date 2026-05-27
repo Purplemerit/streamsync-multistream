@@ -1,12 +1,30 @@
 const mongoose = require('mongoose');
 
-const platformSchema = new mongoose.Schema({
-  accessToken: String,
-  refreshToken: String,
+const MAX_ACCOUNTS_PER_PLATFORM = 15;
+
+const platformAccountSchema = new mongoose.Schema({
+  accountId: {
+    type: String,
+    default: () => require('crypto').randomUUID(),
+    required: true,
+  },
+  label: {
+    type: String,
+    default: 'Account 1',
+  },
   streamKey: String,
   rtmpUrl: String,
   connectedAt: Date,
 }, { _id: false });
+
+const platformAccountsArraySchema = {
+  type: [platformAccountSchema],
+  default: [],
+  validate: {
+    validator: (accounts) => accounts.length <= MAX_ACCOUNTS_PER_PLATFORM,
+    message: `Maximum ${MAX_ACCOUNTS_PER_PLATFORM} accounts allowed per platform`,
+  },
+};
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -17,15 +35,17 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
   twitchUsername: { type: String, default: null },
   platforms: {
-    youtube:   { type: platformSchema, default: null },
-    twitch:    { type: platformSchema, default: null },
-    facebook:  { type: platformSchema, default: null },
-    kick:      { type: platformSchema, default: null },
-    rumble:    { type: platformSchema, default: null },
-    telegram:  { type: platformSchema, default: null },
-    x:         { type: platformSchema, default: null },
-    instagram: { type: platformSchema, default: null },
-  }
+    youtube:   platformAccountsArraySchema,
+    twitch:    platformAccountsArraySchema,
+    facebook:  platformAccountsArraySchema,
+    kick:      platformAccountsArraySchema,
+    rumble:    platformAccountsArraySchema,
+    telegram:  platformAccountsArraySchema,
+    x:         platformAccountsArraySchema,
+    instagram: platformAccountsArraySchema,
+    tiktok:    platformAccountsArraySchema,
+    bigo:      platformAccountsArraySchema,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

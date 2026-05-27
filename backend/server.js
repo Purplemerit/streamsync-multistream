@@ -1,3 +1,8 @@
+const nodeCrypto = require('crypto');
+globalThis.crypto = nodeCrypto.webcrypto ?? {
+  getRandomValues: (array) => nodeCrypto.randomFillSync(array),
+};
+
 const dotenv = require('dotenv');
 dotenv.config();
 

@@ -23,6 +23,8 @@ const streamHistorySchema = new mongoose.Schema({
   platformsStreamed: [
     {
       name: { type: String },
+      accountId: { type: String },
+      label: { type: String },
       status: { type: String }
     }
   ],

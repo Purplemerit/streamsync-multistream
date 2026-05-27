@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const platformsConfig = require('../config/platforms.config');
+const { accountOutputKey, RTMPS_PLATFORMS } = require('../utils/platform.util');
 
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 
@@ -10,8 +11,8 @@ const buildRtmpUrl = (platform, streamKey, customRtmpUrl) => {
   if (platform.name === 'instagram') {
     let key = streamKey || '';
     if (key.startsWith('rtmp://') || key.startsWith('rtmps://')) {
-      let fullUrl = key.replace('rtmp://', 'rtmps://');
-      console.log(`Platform instagram: ${fullUrl.substring(0, 70)}...`);
+      const fullUrl = key.replace('rtmp://', 'rtmps://');
+      console.log(`[${accountOutputKey(platform)}] instagram: ${fullUrl.substring(0, 70)}...`);
       return fullUrl;
     }
     if (!baseUrl) throw new Error('Instagram requires RTMP URL');
@@ -20,7 +21,7 @@ const buildRtmpUrl = (platform, streamKey, customRtmpUrl) => {
     }
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     const fullUrl = `${cleanBase}${key}`;
-    console.log(`Platform instagram: ${fullUrl.substring(0, 70)}...`);
+    console.log(`[${accountOutputKey(platform)}] instagram: ${fullUrl.substring(0, 70)}...`);
     return fullUrl;
   }
 
@@ -32,29 +33,40 @@ const buildRtmpUrl = (platform, streamKey, customRtmpUrl) => {
     }
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     const fullUrl = `${cleanBase}app/${streamKey}`;
-    console.log(`Platform kick: ${fullUrl.substring(0, 70)}...`);
+    console.log(`[${accountOutputKey(platform)}] kick: ${fullUrl.substring(0, 70)}...`);
     return fullUrl;
   }
 
-  baseUrl = baseUrl.replace('rtmps://', 'rtmp://');
+  if (!baseUrl.startsWith('rtmps://')) {
+    baseUrl = baseUrl.replace('rtmps://', 'rtmp://');
+  }
   const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
   const fullUrl = `${cleanBase}${streamKey}`;
-  console.log(`Platform ${platform.name}: ${fullUrl.substring(0, 70)}...`);
+  const label = platform.label ? `${platform.name} (${platform.label})` : platform.name;
+  console.log(`[${accountOutputKey(platform)}] ${label}: ${fullUrl.substring(0, 70)}...`);
   return fullUrl;
 };
 
 const buildTeeEntry = (platform, streamKey, customRtmpUrl) => {
   const rtmpUrl = buildRtmpUrl(platform, streamKey, customRtmpUrl);
-  if (platform.name === 'kick' || platform.name === 'instagram') {
+  if (RTMPS_PLATFORMS.has(platform.name)) {
     return `[f=flv:onfail=ignore:tls_verify=0]${rtmpUrl}`;
   }
   return `[f=flv:onfail=ignore]${rtmpUrl}`;
 };
 
+/**
+ * Stream one video to many destinations (one tee branch per account).
+ * `platforms` is a flat list: multiple entries with the same `name` are allowed.
+ */
 const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr) => {
-  const outputs = platforms.map(p =>
-    buildTeeEntry(p, p.streamKey, p.rtmpUrl)
-  ).join('|');
+  if (!platforms?.length) {
+    throw new Error('At least one stream destination is required');
+  }
+
+  const outputs = platforms
+    .map((p) => buildTeeEntry(p, p.streamKey, p.rtmpUrl))
+    .join('|');
 
   const args = [
     '-re',
@@ -78,8 +90,15 @@ const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr)
     outputs
   ];
 
-  console.log(`Starting stream to ${platforms.length} platform(s)...`);
-  console.log('FFmpeg tee output:', outputs.substring(0, 150));
+  const destinations = platforms.map((p) => ({
+    key: accountOutputKey(p),
+    name: p.name,
+    label: p.label,
+  }));
+
+  console.log(`Starting stream to ${platforms.length} destination(s):`);
+  destinations.forEach((d) => console.log(`  - ${d.key} (${d.label || d.name})`));
+  console.log('FFmpeg tee output:', outputs.substring(0, 200));
 
   const process = spawn(FFMPEG_PATH, args);
 
@@ -97,8 +116,7 @@ const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr)
       line.includes('Slave') || line.includes('Output #0')
     ) {
       console.error('FFmpeg stderr:', line.trim());
-      // Pass stderr to manager for platform failure tracking
-      if (onStderr) onStderr(line);
+      if (onStderr) onStderr(line, platforms);
     }
   });
 
@@ -131,4 +149,4 @@ const stopStream = (process) => {
   }
 };
 
-module.exports = { startStream, stopStream };
+module.exports = { startStream, stopStream, accountOutputKey };

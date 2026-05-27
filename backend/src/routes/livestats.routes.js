@@ -1,10 +1,18 @@
 const express = require('express')
-const { fetchAndSaveStats, getStreamStats, getUserAllStreamsStats, getAdminGlobalStats, deleteChatHistory } = require('../controllers/livestats.controller')
+const {
+  fetchAndSaveStats,
+  getStreamStats,
+  getActiveStreamStats,
+  getUserAllStreamsStats,
+  getAdminGlobalStats,
+  deleteChatHistory,
+} = require('../controllers/livestats.controller')
 const { protect } = require('../middleware/auth.middleware')
 const { isAdmin } = require('../middleware/admin.middleware')
 
 const router = express.Router()
 
+router.get('/active', protect, getActiveStreamStats)
 router.get('/my-streams', protect, getUserAllStreamsStats)
 router.get('/stream/:streamId', protect, getStreamStats)
 router.post('/fetch/:streamId', protect, fetchAndSaveStats)

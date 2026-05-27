@@ -11,6 +11,16 @@ router.get('/', (req, res) => {
 router.get('/dashboard', protect, async (req, res) => {
   try {
     const StreamHistory = require('../models/StreamHistory.model');
+    const Stream = require('../models/Stream.model');
+    const { formatStreamDuration } = require('../utils/duration.util');
+
+    const activeStream = await Stream.findOne({ userId: req.user.id, status: 'live' });
+    let accountsLive = 0;
+    if (activeStream?.platforms?.length) {
+      accountsLive = activeStream.platforms.filter(
+        (p) => p.status === 'live' || p.status === 'streaming'
+      ).length;
+    }
 
     const [videoCount, streamCount, recentStreams] = await Promise.all([
       Video.countDocuments({ userId: req.user.id, status: 'active' }),
@@ -22,17 +32,18 @@ router.get('/dashboard', protect, async (req, res) => {
       StreamHistory.find({ userId: req.user.id })
         .sort({ startedAt: -1 })
         .limit(5)
-        .select('videoTitle platformsStreamed startedAt duration')
+        .select('videoTitle platformsStreamed startedAt stoppedAt duration')
     ])
 
     const formatted = recentStreams.map(s => ({
       videoTitle: s.videoTitle || 'Unknown',
       platforms: s.platformsStreamed.map(p => p.name).join(', '),
       startedAt: s.startedAt,
-      duration: s.duration || '00:00:00'
+      stoppedAt: s.stoppedAt,
+      duration: formatStreamDuration(s.duration, s.startedAt, s.stoppedAt)
     }))
 
-    res.json({ videoCount, streamCount, recentStreams: formatted })
+    res.json({ videoCount, streamCount, accountsLive, recentStreams: formatted })
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message })
   }

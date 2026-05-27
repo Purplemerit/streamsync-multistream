@@ -1,10 +1,10 @@
 const { startStream, stopStream } = require('./ffmpeg.service');
+const { accountOutputKey } = require('../utils/platform.util');
 
 const activeSessions = {};
 
 const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
-  // Track failed platforms by parsing FFmpeg stderr
-  const failedPlatforms = new Set();
+  const failedDestinations = new Set();
 
   const command = startStream(
     videoPath,
@@ -14,7 +14,6 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
         io.to(sessionId).emit('stream:progress', {
           sessionId,
           timemark: progress.timemark,
-          frames: progress.frames,
         });
       }
     },
@@ -35,16 +34,16 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
       }
       if (onEnd) onEnd();
     },
-    // FFmpeg stderr callback — parse which platforms failed
     (stderrLine) => {
-      // Match lines like: Slave '[f=flv...]rtmp://...' error
       if (stderrLine.includes('Slave') && stderrLine.includes('error')) {
-        platforms.forEach(p => {
-          if (stderrLine.includes(p.name) || 
-              (p.rtmpUrl && stderrLine.includes(p.rtmpUrl.substring(0, 30))) ||
-              (p.streamKey && stderrLine.includes(p.streamKey.substring(0, 20)))) {
-            failedPlatforms.add(p.name);
-            console.log(`Platform marked as failed: ${p.name}`);
+        platforms.forEach((p) => {
+          const keyMatch =
+            (p.streamKey && stderrLine.includes(p.streamKey.substring(0, 20))) ||
+            (p.rtmpUrl && stderrLine.includes(p.rtmpUrl.substring(0, 30)));
+          if (keyMatch) {
+            const key = accountOutputKey(p);
+            failedDestinations.add(key);
+            console.log(`Destination marked as failed: ${key}`);
           }
         });
       }
@@ -55,7 +54,7 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
     command,
     startedAt: new Date(),
     platforms,
-    failedPlatforms
+    failedDestinations
   };
 
   return command;
@@ -71,20 +70,22 @@ const stopSession = (sessionId) => {
   return false;
 };
 
-const getSession = (sessionId) => {
-  return activeSessions[sessionId] || null;
-};
+const getSession = (sessionId) => activeSessions[sessionId] || null;
 
-const getFailedPlatforms = (sessionId) => {
-  return activeSessions[sessionId]?.failedPlatforms || new Set();
-};
+const getFailedDestinations = (sessionId) =>
+  activeSessions[sessionId]?.failedDestinations || new Set();
 
-const getAllSessions = () => {
-  return Object.keys(activeSessions).map(id => ({
+const getAllSessions = () =>
+  Object.keys(activeSessions).map((id) => ({
     sessionId: id,
     startedAt: activeSessions[id].startedAt,
     platforms: activeSessions[id].platforms
   }));
-};
 
-module.exports = { startSession, stopSession, getSession, getFailedPlatforms, getAllSessions };
+module.exports = {
+  startSession,
+  stopSession,
+  getSession,
+  getFailedDestinations,
+  getAllSessions
+};

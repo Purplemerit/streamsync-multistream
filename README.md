@@ -10,18 +10,42 @@ A full-stack web platform that streams pre-recorded videos live to 10 platforms 
 
 ## Supported Platforms
 
-| Platform | Type | Key Type | Works in India |
-|---|---|---|---|
-| YouTube | Full API + RTMP | Permanent | ✅ |
-| Twitch | Full API + RTMP | Permanent | ✅ |
-| Facebook | RTMP | Permanent | ✅ |
-| Kick | RTMP (Custom URL) | Permanent | ✅ |
-| Rumble | RTMP | Permanent (Beta) | ✅ |
-| Telegram | RTMP | Permanent | ✅ |
-| X (Twitter) | RTMP | Permanent | ✅ |
-| Instagram | RTMP (Custom URL) | Session | ✅ |
-| TikTok | RTMP | Session | ❌ Banned in India |
-| BIGO LIVE | RTMP | Session | ❌ Not available in India |
+| Platform | Type | Key Type | Max Accounts | Works in India |
+|---|---|---|---|---|
+| YouTube | Full API + RTMP | Permanent | 15 per user | ✅ |
+| Twitch | Full API + RTMP | Permanent | 15 per user | ✅ |
+| Facebook | RTMP | Permanent | 15 per user | ✅ |
+| Kick | RTMP (Custom URL) | Permanent | 15 per user | ✅ |
+| Rumble | RTMP | Permanent (Beta) | 15 per user | ✅ |
+| Telegram | RTMP | Permanent | 15 per user | ✅ |
+| X (Twitter) | RTMP | Permanent | 15 per user | ✅ |
+| Instagram | RTMP (Custom URL) | Session | 15 per user | ✅ |
+| TikTok | RTMP | Session | 15 per user | ❌ Banned in India |
+| BIGO LIVE | RTMP | Session | 15 per user | ❌ Not available in India |
+
+---
+
+## Multi-Account Support
+
+StreamSync supports **multiple streaming accounts per platform**. Each user can save up to **15 labeled accounts** on every supported platform (e.g. "Main Channel", "Gaming Channel", "Brand Account").
+
+### How it works
+
+1. **Stream Keys page** — Add, label, and manage accounts per platform. Each account stores its own stream key (and RTMP URL where required for Kick/Instagram).
+2. **Go Live page** — Select any combination of saved accounts across platforms as checkboxes. You can stream to two YouTube channels and one Twitch account in a single session, for example.
+3. **Stream history** — Each session records which specific account (`accountId` + label) was used per platform.
+4. **Account limit** — Maximum 15 accounts per platform per user. The UI shows a counter like `YouTube (3/15)`.
+
+### Upgrading an existing database
+
+If you deployed StreamSync before multi-account support, run the one-time migration after pulling the latest code:
+
+```bash
+cd backend
+npm run migrate
+```
+
+This converts old single-object platform keys to arrays, backfills `accountId` on OAuth records, and updates MongoDB indexes.
 
 ---
 
@@ -29,16 +53,17 @@ A full-stack web platform that streams pre-recorded videos live to 10 platforms 
 
 - Upload pre-recorded videos (MP4, MOV, AVI, MKV up to 2GB)
 - Multistream to 10 platforms simultaneously with one click
-- Save stream keys — auto-fill on Go Live page
-- Real-time stream timer and live platform indicators
+- **Multi-account support — up to 15 labeled accounts per platform**
+- Save stream keys with custom labels — select any account combo on Go Live
+- Real-time stream timer and **per-account** live indicators
 - YouTube and Twitch OAuth for live stats (viewers, likes, chat)
 - Video preview modal with HTML5 player
-- Stream history with duration tracking
+- Stream history with duration tracking and account-level detail
 - Platform monetization guide for creators
 - Admin dashboard with platform popularity charts
 - Role-based access — separate user and admin dashboards
 - Permanent platform analytics that never decrease on deletion
-- Stream key management page with show/hide and delete options
+- Stream key management page with show/hide, add, and delete per account
 
 ---
 
@@ -53,6 +78,7 @@ multistream-app/
 │   │   ├── middleware/      # Auth, Admin, Upload, Error handlers
 │   │   ├── models/          # User, Video, Stream, StreamHistory, PlatformStats, LiveStats
 │   │   ├── routes/          # All API routes
+│   │   ├── scripts/         # DB migrations (migrate-platforms.js)
 │   │   └── services/        # FFmpeg, Stream Manager, Platform services
 │   ├── uploads/             # User video uploads (gitignored)
 │   └── server.js
@@ -113,6 +139,10 @@ cd streamsync-multistream
 # Backend setup
 cd backend
 npm install
+
+# One-time migration (required if upgrading from single-account schema)
+npm run migrate
+
 npm run dev
 
 # Frontend setup (open new terminal)
@@ -130,12 +160,12 @@ Backend runs on `http://localhost:5000`
 
 1. User registers and logs in to StreamSync
 2. Uploads a pre-recorded video (MP4, MOV, AVI, MKV)
-3. Saves stream keys for chosen platforms once — auto-fills every time after
-4. Goes to Go Live page → selects video + platforms → clicks Start Multistream
-5. FFmpeg reads the video file and pushes RTMP stream to all selected platforms simultaneously using tee muxer
-6. Real-time stream progress shown via Socket.io WebSockets
-7. Stream stops on all platforms simultaneously when Stop is clicked
-8. Stream history saved automatically with duration and platform details
+3. Saves stream keys on the Stream Keys page — up to 15 labeled accounts per platform
+4. Goes to Go Live page → selects video + accounts (any combination across platforms) → clicks Start Multistream
+5. FFmpeg reads the video file and pushes RTMP stream to all selected accounts simultaneously using tee muxer
+6. Real-time stream progress shown via Socket.io WebSockets, with per-account live badges
+7. Stream stops on all destinations simultaneously when Stop is clicked
+8. Stream history saved automatically with duration, platform, and account details
 9. Platform popularity analytics updated permanently in database
 
 ---
@@ -159,7 +189,7 @@ Backend runs on `http://localhost:5000`
 
 - View total users, videos, streams, storage used and live sessions
 - Platform popularity bar chart — shows which platforms are streamed most
-- Stream keys adoption chart — shows how many users saved keys per platform
+- Stream keys adoption chart — shows how many accounts users saved per platform
 - Recent registrations and recent uploads
 - Manage users — view, delete
 - Manage videos — view, preview, delete
@@ -171,9 +201,9 @@ Backend runs on `http://localhost:5000`
 
 - Personal dashboard with stats and recent streams
 - Upload and manage videos with click-to-preview modal
-- Save stream keys once — auto-fill on Go Live page
-- Stream to multiple platforms with one click
-- Real-time live timer and platform status indicators
+- Manage multiple labeled stream key accounts per platform (up to 15 each)
+- Stream to any combination of saved accounts with one click
+- Real-time live timer and per-account status indicators
 - Stream history with delete option
 - Platform monetization guide — how each platform pays creators
 - Streaming tips for better engagement
@@ -183,4 +213,3 @@ Backend runs on `http://localhost:5000`
 ## License
 
 Private — Built for Purple Merit, Bengaluru © 2026
-# streamsync-multistream

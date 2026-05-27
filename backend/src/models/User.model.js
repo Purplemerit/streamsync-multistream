@@ -17,13 +17,31 @@ const platformAccountSchema = new mongoose.Schema({
   connectedAt: Date,
 }, { _id: false });
 
+const PLATFORM_NAMES = [
+  'youtube', 'twitch', 'facebook', 'kick', 'rumble',
+  'telegram', 'x', 'instagram', 'tiktok', 'bigo',
+];
+
 const platformAccountsArraySchema = {
   type: [platformAccountSchema],
-  default: [],
+  default: () => [],
+  set: (value) => (value == null ? [] : value),
   validate: {
-    validator: (accounts) => accounts.length <= MAX_ACCOUNTS_PER_PLATFORM,
+    validator: (accounts) => {
+      const list = accounts == null ? [] : accounts;
+      return list.length <= MAX_ACCOUNTS_PER_PLATFORM;
+    },
     message: `Maximum ${MAX_ACCOUNTS_PER_PLATFORM} accounts allowed per platform`,
   },
+};
+
+const normalizeUserPlatforms = (platforms) => {
+  if (!platforms || typeof platforms !== 'object') return;
+  for (const platform of PLATFORM_NAMES) {
+    if (platforms[platform] == null) {
+      platforms[platform] = [];
+    }
+  }
 };
 
 const userSchema = new mongoose.Schema({
@@ -48,4 +66,13 @@ const userSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+userSchema.pre('validate', function () {
+  normalizeUserPlatforms(this.platforms);
+});
+
+userSchema.post('init', function () {
+  normalizeUserPlatforms(this.platforms);
+});
+
 module.exports = mongoose.model('User', userSchema);
+module.exports.PLATFORM_NAMES = PLATFORM_NAMES;

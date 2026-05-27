@@ -57,7 +57,6 @@ const buildTeeEntry = (platform, streamKey, customRtmpUrl) => {
 
 /**
  * Stream one video to many destinations (one tee branch per account).
- * `platforms` is a flat list: multiple entries with the same `name` are allowed.
  */
 const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr) => {
   if (!platforms?.length) {
@@ -90,16 +89,7 @@ const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr)
     outputs
   ];
 
-  const destinations = platforms.map((p) => ({
-    key: accountOutputKey(p),
-    name: p.name,
-    label: p.label,
-  }));
-
   console.log(`Starting stream to ${platforms.length} destination(s):`);
-  destinations.forEach((d) => console.log(`  - ${d.key} (${d.label || d.name})`));
-  console.log('FFmpeg tee output:', outputs.substring(0, 200));
-
   const process = spawn(FFMPEG_PATH, args);
 
   process.stderr.on('data', (data) => {
@@ -123,29 +113,43 @@ const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr)
   process.on('close', (code) => {
     console.log(`FFmpeg exited with code ${code}`);
     if (code === 0) {
-      if (onEnd) onEnd();
-    } else if (code !== null) {
-      if (onError) onError(new Error(`FFmpeg exited with code ${code}`));
+      if (onEnd) onEnd(0);
+    } else if (onError) {
+      onError(new Error(`FFmpeg exited with code ${code ?? 'unknown'}`), code);
     }
   });
 
   process.on('error', (err) => {
     console.error('FFmpeg spawn error:', err.message);
-    if (onError) onError(err);
+    if (onError) onError(err, null);
   });
 
   console.log('FFmpeg process started successfully');
   return process;
 };
 
-const stopStream = (process) => {
-  if (process) {
+const stopStream = (proc) => {
+  if (!proc || proc.killed) return;
+
+  const forceKill = () => {
     try {
-      process.kill('SIGKILL');
-      console.log('FFmpeg process killed successfully');
+      if (!proc.killed) {
+        proc.kill('SIGKILL');
+        console.log('FFmpeg process force-killed (SIGKILL)');
+      }
     } catch (err) {
-      console.error('Error killing FFmpeg:', err.message);
+      console.error('Error force-killing FFmpeg:', err.message);
     }
+  };
+
+  try {
+    proc.kill('SIGTERM');
+    console.log('FFmpeg SIGTERM sent');
+    const timer = setTimeout(forceKill, 2000);
+    proc.once('close', () => clearTimeout(timer));
+  } catch (err) {
+    console.error('Error sending SIGTERM to FFmpeg:', err.message);
+    forceKill();
   }
 };
 

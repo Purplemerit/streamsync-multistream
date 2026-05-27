@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import API from '../../utils/axios'
 import AppLayout from '../../components/common/AppLayout'
 import { useAuth } from '../../hooks/useAuth'
@@ -131,6 +132,11 @@ export default function LiveStatsPage() {
     : null
   const isCurrentlyLive = selectedStream?.stream?.status === 'live'
   const hasAnyLive = streams.some((s) => s.stream?.status === 'live')
+  const isOAuthExpired =
+    Boolean(currentPlatformData?.oauthExpired) ||
+    (typeof currentPlatformData?.message === 'string' &&
+      currentPlatformData.message.includes('OAuth token expired'))
+  const isGenericError = Boolean(currentPlatformData?.error) && !isOAuthExpired
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '—'
@@ -273,7 +279,8 @@ export default function LiveStatsPage() {
                     >
                       <span className={`w-2 h-2 rounded-full ${PLATFORM_COLORS[data?.platform] || 'bg-slate-400'}`} />
                       {accountTabLabel(data)}
-                      {data?.error && <AlertCircle size={14} className="text-red-400" />}
+                      {data?.oauthExpired && <AlertCircle size={14} className="text-amber-500" />}
+                      {data?.error && !data?.oauthExpired && <AlertCircle size={14} className="text-red-400" />}
                     </button>
                   )
                 })}
@@ -291,7 +298,31 @@ export default function LiveStatsPage() {
                   <p className="text-slate-600 text-lg font-medium">OAuth connection required</p>
                   <p className="text-slate-500 text-sm mt-2 max-w-sm">{currentPlatformData.message}</p>
                 </div>
-              ) : currentPlatformData?.error ? (
+              ) : isOAuthExpired ? (
+                <>
+                  <div className="card mb-4 border-amber-200 bg-amber-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="flex items-start gap-3 flex-1">
+                      <AlertCircle size={24} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-amber-900 font-semibold">YouTube OAuth token expired</p>
+                        <p className="text-amber-800 text-sm mt-1">
+                          Reconnect your YouTube account in Stream Keys to see live stats.
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      to="/stream-keys"
+                      className="inline-flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition shrink-0"
+                    >
+                      <Link2 size={16} /> Go to Stream Keys
+                    </Link>
+                  </div>
+                  <PlatformStatsGrid
+                    data={currentPlatformData}
+                    isCurrentlyLive={isCurrentlyLive}
+                  />
+                </>
+              ) : isGenericError ? (
                 <div className="card flex flex-col items-center justify-center py-16 text-center border-red-100 bg-red-50/50">
                   <AlertCircle size={40} className="text-red-400 mb-4" />
                   <p className="text-slate-600 text-lg font-medium">Could not fetch stats</p>
@@ -308,69 +339,78 @@ export default function LiveStatsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <StatCard
-                    icon={<Eye size={20} />}
-                    label="Peak Viewers"
-                    value={currentPlatformData?.peakViewers ?? currentPlatformData?.viewers ?? 0}
-                    color="text-blue-600"
-                    live={isCurrentlyLive}
-                  />
-
-                  {isCurrentlyLive && (
-                    <StatCard
-                      icon={<Eye size={20} />}
-                      label="Current Viewers"
-                      value={currentPlatformData?.viewers ?? 0}
-                      color="text-cyan-600"
-                      live
-                    />
-                  )}
-
-                  {currentPlatformData?.platform === 'youtube' && (
-                    <>
-                      <StatCard
-                        icon={<Heart size={20} />}
-                        label="Likes"
-                        value={currentPlatformData?.likes ?? 0}
-                        color="text-red-600"
-                        live={isCurrentlyLive}
-                      />
-                      <StatCard
-                        icon={<MessageSquare size={20} />}
-                        label="Comments"
-                        value={currentPlatformData?.comments ?? 0}
-                        color="text-emerald-600"
-                        live={isCurrentlyLive}
-                      />
-                    </>
-                  )}
-
-                  <StatCard
-                    icon={<Activity size={20} />}
-                    label="Status"
-                    value={currentPlatformData?.isLive ? 'LIVE' : isCurrentlyLive ? 'Polling' : 'Ended'}
-                    color={currentPlatformData?.isLive ? 'text-emerald-600' : 'text-slate-500'}
-                  />
-
-                  {currentPlatformData?.platform === 'twitch' && (
-                    <div className="col-span-2 md:col-span-3 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-800">
-                      Twitch provides <strong>viewer count</strong> via the Helix API. Likes and comments are not exposed programmatically.
-                    </div>
-                  )}
-
-                  {currentPlatformData?.platform === 'facebook' && currentPlatformData?.isLive && (
-                    <div className="col-span-2 md:col-span-3 bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-800">
-                      Facebook <strong>live_views</strong> require a valid Page OAuth token with <code className="text-xs">pages_read_engagement</code>.
-                    </div>
-                  )}
-                </div>
+                <PlatformStatsGrid
+                  data={currentPlatformData}
+                  isCurrentlyLive={isCurrentlyLive}
+                />
               )}
             </>
           )}
         </div>
       </div>
     </AppLayout>
+  )
+}
+
+function PlatformStatsGrid({ data, isCurrentlyLive }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <StatCard
+        icon={<Eye size={20} />}
+        label="Peak Viewers"
+        value={data?.peakViewers ?? data?.viewers ?? 0}
+        color="text-blue-600"
+        live={isCurrentlyLive}
+      />
+
+      {isCurrentlyLive && (
+        <StatCard
+          icon={<Eye size={20} />}
+          label="Current Viewers"
+          value={data?.viewers ?? 0}
+          color="text-cyan-600"
+          live
+        />
+      )}
+
+      {data?.platform === 'youtube' && (
+        <>
+          <StatCard
+            icon={<Heart size={20} />}
+            label="Likes"
+            value={data?.likes ?? 0}
+            color="text-red-600"
+            live={isCurrentlyLive}
+          />
+          <StatCard
+            icon={<MessageSquare size={20} />}
+            label="Comments"
+            value={data?.comments ?? 0}
+            color="text-emerald-600"
+            live={isCurrentlyLive}
+          />
+        </>
+      )}
+
+      <StatCard
+        icon={<Activity size={20} />}
+        label="Status"
+        value={data?.isLive ? 'LIVE' : isCurrentlyLive ? 'Polling' : 'Ended'}
+        color={data?.isLive ? 'text-emerald-600' : 'text-slate-500'}
+      />
+
+      {data?.platform === 'twitch' && (
+        <div className="col-span-2 md:col-span-3 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-800">
+          Twitch provides <strong>viewer count</strong> via the Helix API. Likes and comments are not exposed programmatically.
+        </div>
+      )}
+
+      {data?.platform === 'facebook' && data?.isLive && (
+        <div className="col-span-2 md:col-span-3 bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-800">
+          Facebook <strong>live_views</strong> require a valid Page OAuth token with <code className="text-xs">pages_read_engagement</code>.
+        </div>
+      )}
+    </div>
   )
 }
 

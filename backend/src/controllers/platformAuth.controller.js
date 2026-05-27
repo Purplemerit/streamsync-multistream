@@ -42,7 +42,7 @@ const youtubeCallback = async (req, res) => {
         platformUsername: channel?.snippet?.title,
         connected: true
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     )
     res.redirect(`${process.env.CLIENT_URL}/stream-keys?connected=youtube`)
   } catch (err) {
@@ -93,7 +93,7 @@ const twitchCallback = async (req, res) => {
         platformUsername: twitchUser?.login,
         connected: true
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     )
     res.redirect(`${process.env.CLIENT_URL}/stream-keys?connected=twitch`)
   } catch (err) {

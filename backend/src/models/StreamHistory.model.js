@@ -1,49 +1,55 @@
 const mongoose = require('mongoose');
 
 const streamHistorySchema = new mongoose.Schema({
+  sessionId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
   },
   streamId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Stream',
-    required: true
+    required: true,
   },
   videoId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Video',
-    required: true
+    required: true,
   },
   videoTitle: {
     type: String,
-    required: true
+    required: true,
   },
   platformsStreamed: [
     {
       name: { type: String },
       accountId: { type: String },
       label: { type: String },
-      status: { type: String }
-    }
+      status: { type: String },
+    },
   ],
   duration: {
     type: String,
-    default: '00:00:00'
+    default: '00:00:00',
   },
   startedAt: {
     type: Date,
-    required: true
+    required: true,
   },
   stoppedAt: {
-    type: Date
+    type: Date,
   },
   endReason: {
     type: String,
-    enum: ['user_stopped', 'error', 'auto_ended'],
-    default: 'user_stopped'
-  }
+    enum: ['user_stopped', 'error', 'auto_ended', 'failed'],
+    default: 'user_stopped',
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('StreamHistory', streamHistorySchema);

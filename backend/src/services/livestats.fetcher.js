@@ -19,8 +19,12 @@ const accountStatsKey = (platform, accountId) => `${platform}::${accountId || 'd
 
 const logResult = (platform, accountId, stats) => {
   const tag = `[livestats] ${platform}/${accountId || 'default'}`
+  if (stats.oauthExpired) {
+    console.log(tag, '⚠️ OAuth expired —', stats.message?.slice(0, 60))
+    return
+  }
   if (stats.error) {
-    console.log(tag, '❌ error:', stats.message || 'unknown')
+    console.log(tag, '❌ error:', stats.message || stats.error || 'unknown')
     return
   }
   if (stats.unavailable) {
@@ -62,6 +66,52 @@ const getErrorStats = (message) => ({
   apiSupported: true,
   message: message || 'Failed to fetch stats',
 })
+
+const isYouTubeOAuthError = (err) => {
+  if (!err) return false
+  const msg = String(
+    err.message ||
+    err.response?.data?.error_description ||
+    err.response?.data?.error?.message ||
+    ''
+  ).toLowerCase()
+  const oauthCode = err.response?.data?.error || err.code
+  if (oauthCode === 'invalid_grant' || msg.includes('invalid_grant')) return true
+  if (msg.includes('invalid argument')) return true
+  if (msg.includes('token') && (msg.includes('expired') || msg.includes('revoked') || msg.includes('invalid'))) {
+    return true
+  }
+  if (err.code === 401 || err.code === 403 || err.response?.status === 401 || err.response?.status === 403) {
+    return true
+  }
+  const details = err.errors || err.response?.data?.error?.errors
+  if (Array.isArray(details)) {
+    return details.some(
+      (e) =>
+        e.reason === 'authError' ||
+        e.reason === 'forbidden' ||
+        String(e.message || '').toLowerCase().includes('invalid')
+    )
+  }
+  return false
+}
+
+const getOAuthExpiredStats = (platform = 'youtube') => {
+  const label = platform.charAt(0).toUpperCase() + platform.slice(1)
+  const message = `OAuth token expired — reconnect ${label}`
+  return {
+    isLive: false,
+    viewers: 0,
+    likes: 0,
+    comments: 0,
+    shares: 0,
+    chatMessages: [],
+    oauthExpired: true,
+    error: message,
+    apiSupported: true,
+    message,
+  }
+}
 
 const getNeedsOAuthStats = (platform) => ({
   isLive: false,
@@ -137,6 +187,9 @@ const getGoogleClient = async (auth) => {
       console.log('[livestats] youtube: access token refreshed')
     } catch (err) {
       console.error('[livestats] youtube token refresh failed:', err.message)
+      if (isYouTubeOAuthError(err)) {
+        return null
+      }
     }
   }
 
@@ -151,62 +204,76 @@ const fetchYouTubeStats = async (auth) => {
     return getErrorStats('YouTube OAuth is not configured on the server')
   }
 
-  const oauth2Client = await getGoogleClient(auth)
-  const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
-
-  const searchRes = await youtube.search.list({
-    part: 'id,snippet',
-    forMine: true,
-    eventType: 'live',
-    type: 'video',
-    maxResults: 1,
-  })
-
-  const videoId = searchRes.data.items?.[0]?.id?.videoId
-  if (!videoId) {
-    return { isLive: false, viewers: 0, likes: 0, comments: 0, shares: 0, chatMessages: [], apiSupported: true }
-  }
-
-  const videoRes = await youtube.videos.list({
-    part: 'statistics,liveStreamingDetails,snippet',
-    id: videoId,
-  })
-  const video = videoRes.data.items?.[0]
-
-  let chatMessages = []
-  const broadcastRes = await youtube.liveBroadcasts.list({
-    part: 'snippet',
-    broadcastStatus: 'active',
-    broadcastType: 'all',
-    maxResults: 1,
-  })
-  const chatId = broadcastRes.data.items?.[0]?.snippet?.liveChatId
-  if (chatId) {
-    try {
-      const chatRes = await youtube.liveChatMessages.list({
-        liveChatId: chatId,
-        part: 'snippet,authorDetails',
-        maxResults: 50,
-      })
-      chatMessages =
-        chatRes.data.items?.map((msg) => ({
-          username: msg.authorDetails?.displayName,
-          message: msg.snippet?.displayMessage,
-          timestamp: new Date(msg.snippet?.publishedAt),
-        })) || []
-    } catch (chatErr) {
-      console.log('[livestats] youtube chat fetch skipped:', chatErr.message)
+  try {
+    const oauth2Client = await getGoogleClient(auth)
+    if (!oauth2Client) {
+      return getOAuthExpiredStats('youtube')
     }
-  }
 
-  return {
-    isLive: true,
-    viewers: parseInt(video?.liveStreamingDetails?.concurrentViewers || 0, 10),
-    likes: parseInt(video?.statistics?.likeCount || 0, 10),
-    comments: parseInt(video?.statistics?.commentCount || 0, 10),
-    shares: 0,
-    chatMessages,
-    apiSupported: true,
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    const searchRes = await youtube.search.list({
+      part: 'id,snippet',
+      forMine: true,
+      eventType: 'live',
+      type: 'video',
+      maxResults: 1,
+    })
+
+    const videoId = searchRes.data.items?.[0]?.id?.videoId
+    if (!videoId) {
+      return { isLive: false, viewers: 0, likes: 0, comments: 0, shares: 0, chatMessages: [], apiSupported: true }
+    }
+
+    const videoRes = await youtube.videos.list({
+      part: 'statistics,liveStreamingDetails,snippet',
+      id: videoId,
+    })
+    const video = videoRes.data.items?.[0]
+
+    let chatMessages = []
+    const broadcastRes = await youtube.liveBroadcasts.list({
+      part: 'snippet',
+      broadcastStatus: 'active',
+      broadcastType: 'all',
+      maxResults: 1,
+    })
+    const chatId = broadcastRes.data.items?.[0]?.snippet?.liveChatId
+    if (chatId) {
+      try {
+        const chatRes = await youtube.liveChatMessages.list({
+          liveChatId: chatId,
+          part: 'snippet,authorDetails',
+          maxResults: 50,
+        })
+        chatMessages =
+          chatRes.data.items?.map((msg) => ({
+            username: msg.authorDetails?.displayName,
+            message: msg.snippet?.displayMessage,
+            timestamp: new Date(msg.snippet?.publishedAt),
+          })) || []
+      } catch (chatErr) {
+        if (isYouTubeOAuthError(chatErr)) {
+          return getOAuthExpiredStats('youtube')
+        }
+        console.log('[livestats] youtube chat fetch skipped:', chatErr.message)
+      }
+    }
+
+    return {
+      isLive: true,
+      viewers: parseInt(video?.liveStreamingDetails?.concurrentViewers || 0, 10),
+      likes: parseInt(video?.statistics?.likeCount || 0, 10),
+      comments: parseInt(video?.statistics?.commentCount || 0, 10),
+      shares: 0,
+      chatMessages,
+      apiSupported: true,
+    }
+  } catch (err) {
+    if (isYouTubeOAuthError(err)) {
+      return getOAuthExpiredStats('youtube')
+    }
+    throw err
   }
 }
 
@@ -345,7 +412,10 @@ async function fetchPlatformAccountStats(platform, accountId, label, user, auths
       logResult(platform, accountId, stats)
       return stats
     } catch (err) {
-      const stats = { ...base, ...getErrorStats(err.message) }
+      const stats = {
+        ...base,
+        ...(isYouTubeOAuthError(err) ? getOAuthExpiredStats('youtube') : getErrorStats(err.message)),
+      }
       logResult(platform, accountId, stats)
       return stats
     }
@@ -402,7 +472,7 @@ async function fetchLiveStreamAccounts(stream, user, auths, { persist = true } =
           accountId: accountId || undefined,
           snapshotAt: new Date(),
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       )
     }
 

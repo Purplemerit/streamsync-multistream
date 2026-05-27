@@ -23,7 +23,7 @@ const saveAccount = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (!Array.isArray(user.platforms[platform])) {
+    if (user.platforms[platform] == null || !Array.isArray(user.platforms[platform])) {
       user.platforms[platform] = [];
     }
 
@@ -92,11 +92,11 @@ const deleteAccount = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const accounts = user.platforms[platform];
-    if (!Array.isArray(accounts)) {
+    if (user.platforms[platform] == null || !Array.isArray(user.platforms[platform])) {
       return res.status(404).json({ message: 'Account not found' });
     }
 
+    const accounts = user.platforms[platform];
     const index = accounts.findIndex((a) => a.accountId === accountId);
     if (index === -1) {
       return res.status(404).json({ message: 'Account not found' });
@@ -128,11 +128,11 @@ const updateAccount = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const accounts = user.platforms[platform];
-    if (!Array.isArray(accounts)) {
+    if (user.platforms[platform] == null || !Array.isArray(user.platforms[platform])) {
       return res.status(404).json({ message: 'Account not found' });
     }
 
+    const accounts = user.platforms[platform];
     const account = accounts.find((a) => a.accountId === accountId);
     if (!account) {
       return res.status(404).json({ message: 'Account not found' });

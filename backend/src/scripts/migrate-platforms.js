@@ -37,6 +37,7 @@ const migrateUserPlatforms = async (usersCollection) => {
   let usersUpdated = 0;
   let platformsConverted = 0;
   let accountsBackfilled = 0;
+  let nullsFixed = 0;
 
   for (const user of users) {
     const platforms = user.platforms || {};
@@ -46,7 +47,13 @@ const migrateUserPlatforms = async (usersCollection) => {
     for (const platform of PLATFORM_NAMES) {
       const value = platforms[platform];
 
-      if (value == null) continue;
+      if (value == null) {
+        updates[`platforms.${platform}`] = [];
+        userModified = true;
+        nullsFixed++;
+        console.log(`  [${user.email}] ${platform}: null → []`);
+        continue;
+      }
 
       if (Array.isArray(value)) {
         let arrayModified = false;
@@ -100,6 +107,7 @@ const migrateUserPlatforms = async (usersCollection) => {
   }
 
   console.log(`Users updated: ${usersUpdated}`);
+  console.log(`Null platform fields set to []: ${nullsFixed}`);
   console.log(`Platform fields converted (object → array): ${platformsConverted}`);
   console.log(`Array accounts backfilled with accountId: ${accountsBackfilled}`);
 };

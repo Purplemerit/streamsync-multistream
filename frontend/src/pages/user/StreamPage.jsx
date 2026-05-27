@@ -32,6 +32,7 @@ export default function StreamPage() {
   const [selectedKeys, setSelectedKeys] = useState(new Set())
   const [loadingKeys, setLoadingKeys] = useState(true)
   const [starting, setStarting] = useState(false)
+  const [stoppingStream, setStoppingStream] = useState(false)
 
   const [streaming, setStreaming] = useState(() => !!localStorage.getItem('activeSessionId'))
   const [sessionId, setSessionId] = useState(() => localStorage.getItem('activeSessionId') || null)
@@ -188,22 +189,40 @@ export default function StreamPage() {
     }
   }
 
+  const resetStreamUi = () => {
+    setStreaming(false)
+    setSessionId(null)
+    setActiveAccounts([])
+    localStorage.removeItem('activeSessionId')
+    localStorage.removeItem('activeAccounts')
+    localStorage.removeItem('activePlatforms')
+    setProgress(null)
+    setLiveStats(null)
+    setStreamDuration(0)
+  }
+
   const handleStopStream = async () => {
-    if (!sessionId) return
+    if (!sessionId || stoppingStream) return
+
+    setStoppingStream(true)
+    const stopSessionId = sessionId
+
+    const forceResetTimer = setTimeout(() => {
+      resetStreamUi()
+      setStoppingStream(false)
+      toast('Stream UI reset — check History for final status.', { icon: 'ℹ️' })
+    }, 5000)
+
     try {
-      await API.post(`/stream/stop/${sessionId}`)
-      setStreaming(false)
-      setSessionId(null)
-      setActiveAccounts([])
-      localStorage.removeItem('activeSessionId')
-      localStorage.removeItem('activeAccounts')
-      localStorage.removeItem('activePlatforms')
-      setProgress(null)
-      setLiveStats(null)
+      await API.post(`/stream/stop/${stopSessionId}`)
       toast.success('Stream stopped successfully!')
-      navigate('/history')
     } catch {
-      toast.error('Failed to stop stream')
+      toast.error('Failed to stop stream — UI reset anyway')
+    } finally {
+      clearTimeout(forceResetTimer)
+      setStoppingStream(false)
+      resetStreamUi()
+      navigate('/history')
     }
   }
 
@@ -246,8 +265,21 @@ export default function StreamPage() {
                     <p className="text-caption text-gray-500 mt-2 font-mono">Encoder: {progress}</p>
                   )}
                 </div>
-                <button type="button" onClick={handleStopStream} className="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-soft">
-                  <Square size={18} /> Stop Stream
+                <button
+                  type="button"
+                  onClick={handleStopStream}
+                  disabled={stoppingStream}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 text-white font-semibold px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-soft min-w-[160px]"
+                >
+                  {stoppingStream ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" /> Stopping…
+                    </>
+                  ) : (
+                    <>
+                      <Square size={18} /> Stop Stream
+                    </>
+                  )}
                 </button>
               </div>
 

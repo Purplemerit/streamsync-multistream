@@ -70,14 +70,17 @@ export default function HistoryPage() {
 
   const getStatusStyle = (status) => {
     if (status === 'user_stopped') return 'badge bg-emerald-50 text-emerald-700 border border-emerald-100'
-    if (status === 'error') return 'badge bg-red-50 text-red-700 border border-red-100'
+    if (status === 'auto_ended') return 'badge bg-sky-50 text-sky-700 border border-sky-100'
+    if (status === 'failed' || status === 'error') return 'badge bg-red-50 text-red-700 border border-red-100'
     return 'badge bg-gray-100 text-gray-600 border border-gray-200'
   }
 
   const getStatusLabel = (status) => {
     if (status === 'user_stopped') return 'Completed'
+    if (status === 'auto_ended') return 'Auto ended'
+    if (status === 'failed') return 'Failed'
     if (status === 'error') return 'Error'
-    return 'Auto ended'
+    return status || 'Unknown'
   }
 
   if (authLoading || !user) {

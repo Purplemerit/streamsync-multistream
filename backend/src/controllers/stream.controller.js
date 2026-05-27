@@ -9,6 +9,14 @@ const { accountOutputKey } = require('../utils/platform.util');
 const { getDurationFromRange } = require('../utils/duration.util');
 const { createNotification, notifyAdmins } = require('../services/notification.service');
 
+const MIN_RUN_SECONDS = 10;
+const QUICK_FAIL_SECONDS = 5;
+
+const toFailedSet = (failedDestinations) => {
+  if (failedDestinations instanceof Set) return failedDestinations;
+  return new Set(failedDestinations || []);
+};
+
 // START STREAM
 const startStream = async (req, res) => {
   try {
@@ -62,12 +70,12 @@ const startStream = async (req, res) => {
       video.filepath,
       platformList,
       io,
-      async (err) => {
-        // FIX: Set stoppedAt immediately when error occurs
+      async (err, exitCode, meta) => {
+        const failed = meta?.failedDestinations ?? streamManager.getFailedDestinations(sessionId);
         await Stream.findOneAndUpdate(
-          { sessionId },
+          { sessionId, status: 'live' },
           { status: 'error', stoppedAt: new Date() },
-          { new: true }
+          { returnDocument: 'after' }
         );
         await createNotification(
           req.user.id,
@@ -80,15 +88,22 @@ const startStream = async (req, res) => {
           'Stream Error',
           `Stream of "${video.title}" failed with error: ${err.message}`
         );
+        await finalizeStreamSession(sessionId, 'error', failed, {
+          exitCode: exitCode ?? meta?.exitCode,
+          hadProgress: meta?.hadProgress ?? false,
+        });
       },
-      async () => {
-        // FIX: Set stoppedAt before saving history for auto_ended streams
+      async (exitCode, meta) => {
+        const failed = meta?.failedDestinations ?? new Set();
         await Stream.findOneAndUpdate(
-          { sessionId },
+          { sessionId, status: 'live' },
           { status: 'stopped', stoppedAt: new Date() },
-          { new: true }
+          { returnDocument: 'after' }
         );
-        await saveHistory(sessionId, 'auto_ended');
+        await finalizeStreamSession(sessionId, 'auto_ended', failed, {
+          exitCode: exitCode ?? meta?.exitCode ?? 0,
+          hadProgress: meta?.hadProgress ?? false,
+        });
       }
     );
 
@@ -109,20 +124,32 @@ const stopStream = async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    const stream = await Stream.findOne({ sessionId, userId: req.user.id });
-    if (!stream) return res.status(404).json({ message: 'Stream session not found' });
+    const existing = await Stream.findOne({ sessionId, userId: req.user.id });
+    if (!existing) return res.status(404).json({ message: 'Stream session not found' });
 
-    const failedDestinations = streamManager.getFailedDestinations(sessionId);
-    const stopped = streamManager.stopSession(sessionId);
-    console.log(`Stream ${sessionId} stopped: ${stopped}`);
+    if (existing.status !== 'live') {
+      return res.json({
+        message: 'Stream already stopped',
+        sessionId,
+      });
+    }
+
+    const sessionMeta = streamManager.stopSession(sessionId) || streamManager.getSessionSnapshot(sessionId);
+    const failedDestinations = sessionMeta?.failedDestinations ?? streamManager.getFailedDestinations(sessionId);
+    console.log(`Stream ${sessionId} stop requested`);
 
     await Stream.findOneAndUpdate(
-      { sessionId },
+      { sessionId, userId: req.user.id, status: 'live' },
       { status: 'stopped', stoppedAt: new Date() },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
-    await saveHistory(sessionId, 'user_stopped', failedDestinations);
+    const stream = await Stream.findOne({ sessionId }).populate('videoId', 'title');
+
+    await finalizeStreamSession(sessionId, 'user_stopped', failedDestinations, {
+      exitCode: sessionMeta?.exitCode ?? null,
+      hadProgress: sessionMeta?.hadProgress ?? false,
+    });
 
     // ── Auto-fetch and save live stats after stream ends ──────────────────
     try {
@@ -263,13 +290,15 @@ const stopStream = async (req, res) => {
             accountId: platform.accountId,
           },
           { ...stats, accountId: platform.accountId, snapshotAt: new Date() },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
         console.log(`Stats saved for ${platformName}`);
       }
     } catch (statsErr) {
       console.error('Error auto-fetching stats:', statsErr.message);
     }
+
+    streamManager.endSession(sessionId);
 
     res.json({
       message: 'Stream stopped successfully on all platforms',
@@ -312,41 +341,92 @@ const getStreamHistory = async (req, res) => {
   }
 };
 
-// HELPER — Save history and update PlatformStats
-const saveHistory = async (sessionId, endReason, failedDestinations = new Set()) => {
+// HELPER — Finalize session: save history once or discard failed attempts
+const finalizeStreamSession = async (sessionId, endReason, failedDestinations = new Set(), options = {}) => {
   try {
-    const stream = await Stream.findOne({ sessionId }).populate('videoId', 'title');
-    if (!stream) return;
+    const failed = toFailedSet(failedDestinations);
 
-    // FIX: stoppedAt is always set before saveHistory is called now.
-    // This fallback uses new Date() only as a last resort and logs a warning.
-    const stopTime = stream.stoppedAt || new Date();
-    if (!stream.stoppedAt) {
-      console.warn(`[saveHistory] WARNING: stoppedAt missing for session ${sessionId}. Duration may be inaccurate.`);
+    const existingHistory = await StreamHistory.findOne({ sessionId });
+    if (existingHistory) {
+      console.log(`[finalize] History already saved for session ${sessionId}, skipping`);
+      streamManager.endSession(sessionId);
+      return { saved: false, duplicate: true };
     }
 
+    const stream = await Stream.findOne({ sessionId }).populate('videoId', 'title');
+    if (!stream) {
+      streamManager.endSession(sessionId);
+      return { saved: false, missing: true };
+    }
+
+    const stopTime = stream.stoppedAt || new Date();
+    if (!stream.stoppedAt) {
+      await Stream.findOneAndUpdate(
+        { sessionId },
+        { stoppedAt: stopTime },
+        { returnDocument: 'after' }
+      );
+    }
+
+    const elapsedSec = Math.max(0, (stopTime - stream.startedAt) / 1000);
+    const exitCode = options.exitCode ?? null;
+    const hadProgress = options.hadProgress ?? false;
+    const successCount = stream.platforms.filter(
+      (p) => !failed.has(accountOutputKey(p))
+    ).length;
+
+    const quickFailure =
+      exitCode != null && exitCode !== 0 && elapsedSec < QUICK_FAIL_SECONDS;
+    const shouldSave =
+      !quickFailure && (elapsedSec >= MIN_RUN_SECONDS || successCount > 0);
+
+    streamManager.endSession(sessionId);
+
+    if (!shouldSave) {
+      await Stream.findByIdAndDelete(stream._id);
+      console.log(
+        `[finalize] Discarded session ${sessionId} (${elapsedSec.toFixed(1)}s, exit ${exitCode}, success ${successCount})`
+      );
+      return { saved: false, deleted: true };
+    }
+
+    let finalEndReason = endReason;
+    if (exitCode != null && exitCode !== 0) finalEndReason = 'failed';
+    else if (successCount === 0 && elapsedSec < MIN_RUN_SECONDS) finalEndReason = 'failed';
+
     const duration = getDurationFromRange(stream.startedAt, stopTime);
+    const platformsStreamed = stream.platforms.map((p) => ({
+      name: p.name,
+      accountId: p.accountId,
+      label: p.label,
+      status: failed.has(accountOutputKey(p)) ? 'error' : 'success',
+    }));
 
-    await StreamHistory.create({
-      userId: stream.userId,
-      streamId: stream._id,
-      videoId: stream.videoId._id,
-      videoTitle: stream.videoId.title,
-      platformsStreamed: stream.platforms.map(p => ({
-        name: p.name,
-        accountId: p.accountId,
-        label: p.label,
-        status: failedDestinations.has(accountOutputKey(p)) ? 'error' : 'success'
-      })),
-      duration,
-      startedAt: stream.startedAt,
-      stoppedAt: stopTime,
-      endReason
-    });
+    await StreamHistory.findOneAndUpdate(
+      { sessionId },
+      {
+        $setOnInsert: {
+          sessionId,
+          userId: stream.userId,
+          streamId: stream._id,
+          videoId: stream.videoId._id,
+          videoTitle: stream.videoId.title,
+          platformsStreamed,
+          duration,
+          startedAt: stream.startedAt,
+          stoppedAt: stopTime,
+          endReason: finalEndReason,
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
 
-    if (endReason === 'user_stopped' || endReason === 'auto_ended') {
+    const isSuccessful =
+      finalEndReason === 'user_stopped' || finalEndReason === 'auto_ended';
+
+    if (isSuccessful) {
       const successfulPlatforms = stream.platforms.filter(
-        (p) => !failedDestinations.has(accountOutputKey(p))
+        (p) => !failed.has(accountOutputKey(p))
       );
       console.log(`Updating PlatformStats for ${successfulPlatforms.length} successful platform(s)`);
 
@@ -354,7 +434,7 @@ const saveHistory = async (sessionId, endReason, failedDestinations = new Set())
         await PlatformStats.findOneAndUpdate(
           { platform: p.name },
           { $inc: { totalStreams: 1 } },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       }
 
@@ -370,10 +450,21 @@ const saveHistory = async (sessionId, endReason, failedDestinations = new Set())
         'Stream Completed',
         `Stream of "${stream.videoId.title}" completed after ${duration} on ${successfulPlatforms.length} platform(s).`
       );
+    } else if (finalEndReason === 'failed') {
+      await createNotification(
+        stream.userId,
+        'stream_error',
+        'Stream failed',
+        `Your stream of "${stream.videoId.title}" did not complete successfully.`
+      );
     }
 
+    console.log(`[finalize] History saved for ${sessionId} (${finalEndReason}, ${duration})`);
+    return { saved: true, endReason: finalEndReason };
   } catch (err) {
-    console.error('Error saving history:', err.message);
+    console.error('Error finalizing stream session:', err.message);
+    streamManager.endSession(sessionId);
+    return { saved: false, error: err.message };
   }
 };
 

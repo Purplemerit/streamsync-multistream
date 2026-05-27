@@ -35,6 +35,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/auth/platform', platformAuthRoutes);
 app.use('/api/livestats', liveStatsRoutes);
 
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
 app.use(errorMiddleware);
 
 module.exports = app;

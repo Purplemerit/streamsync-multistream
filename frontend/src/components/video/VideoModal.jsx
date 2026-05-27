@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
+import { getVideoPlayUrl } from '../../utils/cloudinary'
 
 export default function VideoModal({ video, onClose }) {
   const videoRef = useRef(null)
@@ -10,10 +11,10 @@ export default function VideoModal({ video, onClose }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
-  const token = localStorage.getItem('token')
-  const videoUrl = `${import.meta.env.VITE_API_URL}/videos/play/${video._id}?token=${token}`
+  const videoUrl = getVideoPlayUrl(video)
 
   const formatSize = (bytes) => {
+    if (!bytes) return '—'
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
@@ -31,7 +32,7 @@ export default function VideoModal({ video, onClose }) {
       }}
     >
       <div
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: '#111827',
           border: '1px solid rgba(139,92,246,0.3)',
@@ -66,15 +67,21 @@ export default function VideoModal({ video, onClose }) {
           </button>
         </div>
         <div style={{ background: 'black' }}>
-          <video
-            ref={videoRef}
-            controls
-            autoPlay
-            style={{ width: '100%', maxHeight: '500px', display: 'block' }}
-            src={videoUrl}
-          >
-            Your browser does not support the video tag.
-          </video>
+          {videoUrl ? (
+            <video
+              ref={videoRef}
+              controls
+              autoPlay
+              style={{ width: '100%', maxHeight: '500px', display: 'block' }}
+              src={videoUrl}
+            >
+              Your browser does not support the video tag.
+            </video>
+          ) : (
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9ca3af' }}>
+              Video file is unavailable.
+            </div>
+          )}
         </div>
       </div>
     </div>

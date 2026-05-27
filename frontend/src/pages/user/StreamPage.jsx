@@ -78,7 +78,7 @@ export default function StreamPage() {
 
   useEffect(() => {
     API.get('/videos/my')
-      .then((res) => setVideos(res.data))
+      .then((res) => setVideos(res.data.filter((v) => v.status !== 'missing')))
       .catch(() => toast.error('Failed to load videos'))
     deferEffect(() => loadSavedAccounts())
   }, [loadSavedAccounts])

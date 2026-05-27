@@ -6,6 +6,10 @@ const StreamHistory = require('../models/StreamHistory.model');
 const streamManager = require('../services/stream.manager');
 const { createNotification, notifyAdmins } = require('../services/notification.service');
 const { sendAccountDeletedEmail } = require('../services/email.service');
+const {
+  deleteVideoFromCloudinary,
+  deleteLocalVideoFile,
+} = require('../utils/videoPath.util');
 
 // GET ALL USERS
 const getAllUsers = async (req, res) => {
@@ -40,7 +44,7 @@ const deleteUser = async (req, res) => {
 // GET ALL VIDEOS
 const getAllVideos = async (req, res) => {
   try {
-    const videos = await Video.find({ status: 'active' })
+    const videos = await Video.find({ status: { $in: ['active', 'missing'] } })
       .populate('userId', 'name email')
       .sort({ createdAt: -1 });
     res.json(videos);
@@ -54,6 +58,17 @@ const deleteVideo = async (req, res) => {
   try {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ message: 'Video not found' });
+
+    if (video.cloudinaryPublicId) {
+      try {
+        await deleteVideoFromCloudinary(video);
+      } catch {
+        return res.status(500).json({ message: 'Failed to delete video from Cloudinary' });
+      }
+    } else {
+      deleteLocalVideoFile(video);
+    }
+
     video.status = 'deleted';
     await video.save();
     await createNotification(

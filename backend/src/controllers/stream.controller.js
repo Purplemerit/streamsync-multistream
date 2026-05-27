@@ -8,6 +8,7 @@ const platformsConfig = require('../config/platforms.config');
 const { accountOutputKey } = require('../utils/platform.util');
 const { getDurationFromRange } = require('../utils/duration.util');
 const { createNotification, notifyAdmins } = require('../services/notification.service');
+const { resolveVideoPathForFfmpeg } = require('../utils/videoPath.util');
 
 const MIN_RUN_SECONDS = 10;
 const QUICK_FAIL_SECONDS = 5;
@@ -68,9 +69,17 @@ const startStream = async (req, res) => {
 
     const io = req.app.get('io');
 
+    let resolved;
+    try {
+      resolved = await resolveVideoPathForFfmpeg(video, sessionId);
+    } catch (pathErr) {
+      await Stream.findByIdAndDelete(stream._id);
+      return res.status(400).json({ message: pathErr.message || 'Video file not available' });
+    }
+
     streamManager.startSession(
       sessionId,
-      video.filepath,
+      resolved.path,
       platformList,
       io,
       async (err, exitCode, meta) => {
@@ -107,7 +116,8 @@ const startStream = async (req, res) => {
           exitCode: exitCode ?? meta?.exitCode ?? 0,
           hadProgress: meta?.hadProgress ?? false,
         });
-      }
+      },
+      { tempVideoPath: resolved.isTemp ? resolved.path : null }
     );
 
     res.status(201).json({

@@ -4,37 +4,40 @@ const videoSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
   },
   title: {
     type: String,
-    required: true
+    required: true,
   },
   filename: {
     type: String,
-    required: true
   },
   filepath: {
     type: String,
-    required: true
+  },
+  cloudinaryUrl: {
+    type: String,
+  },
+  cloudinaryPublicId: {
+    type: String,
   },
   filesize: {
     type: Number,
-    required: true
+    required: true,
   },
   mimetype: {
     type: String,
-    required: true
   },
   duration: {
     type: String,
-    default: 'Unknown'
+    default: 'Unknown',
   },
   status: {
     type: String,
-    enum: ['active', 'deleted'],
-    default: 'active'
-  }
+    enum: ['active', 'deleted', 'missing'],
+    default: 'active',
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Video', videoSchema);

@@ -6,6 +6,7 @@ import { Film, Play, Trash2 } from 'lucide-react'
 import VideoModal from '../../components/video/VideoModal'
 import { SkeletonTable } from '../../components/ui/Skeleton'
 import EmptyState from '../../components/ui/EmptyState'
+import { getVideoThumbnailUrl, isVideoPlayable } from '../../utils/cloudinary'
 
 export default function ManageVideos() {
   const [videos, setVideos] = useState([])
@@ -74,18 +75,34 @@ export default function ManageVideos() {
                 </tr>
               </thead>
               <tbody>
-                {videos.map((v) => (
+                {videos.map((v) => {
+                  const thumb = getVideoThumbnailUrl(v.cloudinaryUrl)
+                  const playable = isVideoPlayable(v)
+                  return (
                   <tr
                     key={v._id}
-                    onClick={() => setPreviewVideo(v)}
-                    className="border-b border-gray-100 table-row-hover cursor-pointer"
+                    onClick={() => playable && setPreviewVideo(v)}
+                    className={`border-b border-gray-100 table-row-hover ${playable ? 'cursor-pointer' : 'cursor-default'}`}
                   >
                     <td className="py-3 px-4 sm:px-6">
                       <div className="flex items-center gap-3">
-                        <div className="bg-brand-600 text-white p-2 rounded-lg shrink-0">
-                          <Play size={14} />
+                        {thumb ? (
+                          <img
+                            src={thumb}
+                            alt=""
+                            className="w-12 h-8 rounded object-cover shrink-0 border border-gray-200"
+                          />
+                        ) : (
+                          <div className="bg-brand-600 text-white p-2 rounded-lg shrink-0">
+                            <Play size={14} />
+                          </div>
+                        )}
+                        <div>
+                          <span className="font-medium text-gray-900">{v.title}</span>
+                          {v.status === 'missing' && (
+                            <span className="block text-xs text-amber-600 mt-0.5">File missing</span>
+                          )}
                         </div>
-                        <span className="font-medium text-gray-900">{v.title}</span>
                       </div>
                     </td>
                     <td className="py-3 pr-4">
@@ -107,7 +124,7 @@ export default function ManageVideos() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

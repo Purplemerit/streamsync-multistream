@@ -1,5 +1,6 @@
 const { startStream, stopStream } = require('./ffmpeg.service');
 const { accountOutputKey } = require('../utils/platform.util');
+const { cleanupTempVideo } = require('../utils/videoPath.util');
 
 const activeSessions = {};
 
@@ -10,8 +11,17 @@ const snapshotSession = (session) => ({
   exitCode: session.exitCode ?? null,
 });
 
-const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
+const removeSession = (sessionId) => {
+  const session = activeSessions[sessionId];
+  if (session?.tempVideoPath) {
+    cleanupTempVideo(session.tempVideoPath);
+  }
+  delete activeSessions[sessionId];
+};
+
+const startSession = (sessionId, videoPath, platforms, io, onError, onEnd, options = {}) => {
   const failedDestinations = new Set();
+  const { tempVideoPath = null } = options;
 
   const command = startStream(
     videoPath,
@@ -38,7 +48,7 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
       const meta = session
         ? snapshotSession({ ...session, exitCode: exitCode ?? session.exitCode })
         : null;
-      delete activeSessions[sessionId];
+      removeSession(sessionId);
       if (io) {
         io.to(sessionId).emit('stream:error', {
           sessionId,
@@ -50,7 +60,7 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
     (exitCode) => {
       const session = activeSessions[sessionId];
       const meta = session ? snapshotSession({ ...session, exitCode: exitCode ?? 0 }) : null;
-      delete activeSessions[sessionId];
+      removeSession(sessionId);
       if (io) {
         io.to(sessionId).emit('stream:ended', { sessionId });
       }
@@ -89,6 +99,7 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
     hadProgress: false,
     exitCode: null,
     stopRequested: false,
+    tempVideoPath,
   };
 
   return command;
@@ -109,7 +120,7 @@ const stopSession = (sessionId) => {
 };
 
 const endSession = (sessionId) => {
-  delete activeSessions[sessionId];
+  removeSession(sessionId);
 };
 
 const getSession = (sessionId) => activeSessions[sessionId] || null;

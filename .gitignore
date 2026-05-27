@@ -16,6 +16,8 @@ backend/.env.local
 backend/node_modules/
 backend/uploads/*
 !backend/uploads/.gitkeep
+backend/uploads/temp/*
+!backend/uploads/temp/.gitkeep
 
 # Frontend
 frontend/.env.local

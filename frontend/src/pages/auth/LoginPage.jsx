@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import API from '../../utils/axios'
 import toast from 'react-hot-toast'
@@ -13,6 +13,14 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    if (location.state?.error) {
+      toast.error(location.state.error)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location, navigate])
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 

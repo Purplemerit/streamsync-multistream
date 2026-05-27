@@ -89,7 +89,15 @@ const startStream = (videoPath, platforms, onProgress, onError, onEnd, onStderr)
     outputs
   ];
 
+  const destinations = platforms.map((p) => ({
+    key: accountOutputKey(p),
+    name: p.name,
+    accountId: p.accountId,
+    label: p.label,
+  }));
   console.log(`Starting stream to ${platforms.length} destination(s):`);
+  destinations.forEach((d) => console.log(`  - ${d.key} (${d.label || d.name})`));
+  console.log('FFmpeg tee outputs:', outputs.substring(0, 200));
   const process = spawn(FFMPEG_PATH, args);
 
   process.stderr.on('data', (data) => {

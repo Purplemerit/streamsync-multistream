@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import GoogleAuthSuccessPage from './pages/auth/GoogleAuthSuccessPage'
 import DashboardPage from './pages/user/DashboardPage'
 import MyVideosPage from './pages/user/MyVideosPage'
 import StreamPage from './pages/user/StreamPage'
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/auth/google/success" element={<GoogleAuthSuccessPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />

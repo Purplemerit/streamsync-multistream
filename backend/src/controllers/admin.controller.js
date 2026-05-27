@@ -1,4 +1,5 @@
 const User = require('../models/User.model');
+const { VALID_PLATFORMS } = require('./streamkey.controller');
 const Video = require('../models/Video.model');
 const Stream = require('../models/Stream.model');
 const StreamHistory = require('../models/StreamHistory.model');
@@ -107,6 +108,58 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+// PATCH USER ROLE
+const updateUserRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['admin', 'user'].includes(role)) {
+      return res.status(400).json({ message: 'Role must be admin or user' });
+    }
+    const targetId = String(req.params.id);
+    const adminId = String(req.user._id || req.user.id);
+    if (targetId === adminId) {
+      return res.status(400).json({ message: 'You cannot change your own role' });
+    }
+    const user = await User.findById(targetId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.role = role;
+    await user.save();
+
+    const updated = await User.findById(targetId).select('-password');
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// GET STREAM KEYS AGGREGATE STATS
+const getStreamKeysStats = async (req, res) => {
+  try {
+    const users = await User.find().select('platforms');
+    const stats = VALID_PLATFORMS.map((platform) => ({
+      platform,
+      totalAccounts: 0,
+      totalUsers: 0,
+    }));
+    const index = Object.fromEntries(stats.map((s, i) => [s.platform, i]));
+
+    users.forEach((user) => {
+      VALID_PLATFORMS.forEach((platform) => {
+        const accounts = user.platforms?.[platform];
+        if (!Array.isArray(accounts) || accounts.length === 0) return;
+        const i = index[platform];
+        stats[i].totalAccounts += accounts.length;
+        stats[i].totalUsers += 1;
+      });
+    });
+
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
 // GET PLATFORM POPULARITY
 const getPlatformPopularity = async (req, res) => {
   try {
@@ -128,4 +181,15 @@ const getPlatformPopularity = async (req, res) => {
   }
 };
 
-module.exports = { getAllUsers, deleteUser, getAllVideos, deleteVideo, getAllStreams, getAllHistory, getDashboardStats, getPlatformPopularity };
+module.exports = {
+  getAllUsers,
+  deleteUser,
+  updateUserRole,
+  getStreamKeysStats,
+  getAllVideos,
+  deleteVideo,
+  getAllStreams,
+  getAllHistory,
+  getDashboardStats,
+  getPlatformPopularity,
+};

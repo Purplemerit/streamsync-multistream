@@ -2,6 +2,13 @@ const PlatformAuth = require('../models/PlatformAuth.model')
 const { google } = require('googleapis')
 const axios = require('axios')
 
+const encodeState = (userId, accountId) => `${userId}|${accountId}`
+
+const parseState = (state) => {
+  const [userId, accountId] = String(state || '').split('|')
+  return { userId, accountId }
+}
+
 const getGoogleClient = () => new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
@@ -9,6 +16,10 @@ const getGoogleClient = () => new google.auth.OAuth2(
 )
 
 const youtubeAuthURL = (req, res) => {
+  const { accountId } = req.query
+  if (!accountId) {
+    return res.status(400).json({ message: 'accountId is required' })
+  }
   const oauth2Client = getGoogleClient()
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -16,13 +27,14 @@ const youtubeAuthURL = (req, res) => {
       'https://www.googleapis.com/auth/youtube.readonly',
       'https://www.googleapis.com/auth/youtube.force-ssl'
     ],
-    state: req.user._id.toString()
+    state: encodeState(req.user._id.toString(), accountId)
   })
   res.json({ url })
 }
 
 const youtubeCallback = async (req, res) => {
   const { code, state } = req.query
+  const { userId, accountId } = parseState(state)
   try {
     const oauth2Client = getGoogleClient()
     const { tokens } = await oauth2Client.getToken(code)
@@ -33,7 +45,7 @@ const youtubeCallback = async (req, res) => {
     const channel = profile.data.items?.[0]
 
     await PlatformAuth.findOneAndUpdate(
-      { user: state, platform: 'youtube' },
+      { user: userId, platform: 'youtube', accountId },
       {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
@@ -44,7 +56,7 @@ const youtubeCallback = async (req, res) => {
       },
       { upsert: true, returnDocument: 'after' }
     )
-    res.redirect(`${process.env.CLIENT_URL}/stream-keys?connected=youtube`)
+    res.redirect(`${process.env.CLIENT_URL}/stream-keys?connected=youtube&accountId=${accountId}`)
   } catch (err) {
     console.error('YouTube OAuth error:', err)
     res.redirect(`${process.env.CLIENT_URL}/stream-keys?error=youtube`)
@@ -52,18 +64,23 @@ const youtubeCallback = async (req, res) => {
 }
 
 const twitchAuthURL = (req, res) => {
+  const { accountId } = req.query
+  if (!accountId) {
+    return res.status(400).json({ message: 'accountId is required' })
+  }
   const params = new URLSearchParams({
     client_id: process.env.TWITCH_CLIENT_ID,
     redirect_uri: `${process.env.SERVER_URL || 'http://localhost:5000'}/api/auth/platform/twitch/callback`,
     response_type: 'code',
     scope: 'user:read:email channel:read:stream_key',
-    state: req.user._id.toString()
+    state: encodeState(req.user._id.toString(), accountId)
   })
   res.json({ url: `https://id.twitch.tv/oauth2/authorize?${params}` })
 }
 
 const twitchCallback = async (req, res) => {
   const { code, state } = req.query
+  const { userId, accountId } = parseState(state)
   try {
     const tokenRes = await axios.post('https://id.twitch.tv/oauth2/token', null, {
       params: {
@@ -85,7 +102,7 @@ const twitchCallback = async (req, res) => {
     const twitchUser = userRes.data.data?.[0]
 
     await PlatformAuth.findOneAndUpdate(
-      { user: state, platform: 'twitch' },
+      { user: userId, platform: 'twitch', accountId },
       {
         accessToken: access_token,
         refreshToken: refresh_token,
@@ -95,7 +112,7 @@ const twitchCallback = async (req, res) => {
       },
       { upsert: true, returnDocument: 'after' }
     )
-    res.redirect(`${process.env.CLIENT_URL}/stream-keys?connected=twitch`)
+    res.redirect(`${process.env.CLIENT_URL}/stream-keys?connected=twitch&accountId=${accountId}`)
   } catch (err) {
     console.error('Twitch OAuth error:', err)
     res.redirect(`${process.env.CLIENT_URL}/stream-keys?error=twitch`)
@@ -106,10 +123,13 @@ const getConnectionStatus = async (req, res) => {
   try {
     const connections = await PlatformAuth.find({ user: req.user._id })
     const status = {}
-    connections.forEach(c => {
-      status[c.platform] = {
+    connections.forEach((c) => {
+      const key = `${c.platform}::${c.accountId}`
+      status[key] = {
         connected: c.connected,
-        username: c.platformUsername
+        username: c.platformUsername,
+        platform: c.platform,
+        accountId: c.accountId,
       }
     })
     res.json(status)
@@ -120,12 +140,12 @@ const getConnectionStatus = async (req, res) => {
 
 const disconnectPlatform = async (req, res) => {
   try {
-    const { platform } = req.params
+    const { platform, accountId } = req.params
     await PlatformAuth.findOneAndUpdate(
-      { user: req.user._id, platform },
+      { user: req.user._id, platform, accountId },
       { connected: false, accessToken: null, refreshToken: null }
     )
-    res.json({ message: `${platform} disconnected` })
+    res.json({ message: `${platform} account disconnected` })
   } catch (err) {
     res.status(500).json({ message: 'Failed to disconnect' })
   }

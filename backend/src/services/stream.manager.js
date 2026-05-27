@@ -23,6 +23,13 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
         io.to(sessionId).emit('stream:progress', {
           sessionId,
           timemark: progress.timemark,
+          destinationCount: platforms.length,
+          destinations: platforms.map((p) => ({
+            platform: p.name,
+            accountId: p.accountId,
+            label: p.label,
+            key: accountOutputKey(p),
+          })),
         });
       }
     },
@@ -59,6 +66,15 @@ const startSession = (sessionId, videoPath, platforms, io, onError, onEnd) => {
             const key = accountOutputKey(p);
             failedDestinations.add(key);
             console.log(`Destination marked as failed: ${key}`);
+            if (io) {
+              io.to(sessionId).emit('stream:destination:error', {
+                sessionId,
+                platform: p.name,
+                accountId: p.accountId,
+                label: p.label,
+                key,
+              });
+            }
           }
         });
       }

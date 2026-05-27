@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const passport = require('passport');
-const { register, login, googleCallback, getMe } = require('../controllers/auth.controller');
+const { register, login, googleTokenLogin, googleCallback, getMe } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
@@ -17,6 +17,9 @@ router.post('/login', [
   body('email').isEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required'),
 ], login);
+
+// GOOGLE SIGN-IN — One Tap / credential JWT from frontend
+router.post('/google/token', googleTokenLogin);
 
 // GOOGLE LOGIN — Step 1: redirect to Google
 router.get('/google',

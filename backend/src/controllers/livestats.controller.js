@@ -225,6 +225,30 @@ const deleteChatHistory = async (req, res) => {
   }
 }
 
+const deleteStreamFromHistory = async (req, res) => {
+  try {
+    const Stream = require('../models/Stream.model')
+    const stream = await Stream.findOne({
+      _id: req.params.streamId,
+      userId: req.user._id,
+    })
+    if (!stream) {
+      return res.status(404).json({ message: 'Stream not found' })
+    }
+    if (stream.status === 'live') {
+      return res.status(400).json({ message: 'Cannot remove a stream that is still live' })
+    }
+
+    await LiveStats.deleteMany({ user: req.user._id, stream: stream._id })
+    await Stream.findByIdAndDelete(stream._id)
+
+    res.json({ message: 'Stream removed from live stats history' })
+  } catch (err) {
+    console.error('deleteStreamFromHistory error:', err)
+    res.status(500).json({ message: 'Failed to delete stream from history' })
+  }
+}
+
 module.exports = {
   fetchAndSaveStats,
   getStreamStats,
@@ -232,4 +256,5 @@ module.exports = {
   getUserAllStreamsStats,
   getAdminGlobalStats,
   deleteChatHistory,
+  deleteStreamFromHistory,
 }

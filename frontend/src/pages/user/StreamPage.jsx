@@ -41,6 +41,7 @@ export default function StreamPage() {
   const [progress, setProgress] = useState(null)
   const [streamDuration, setStreamDuration] = useState(0)
   const [liveStats, setLiveStats] = useState(null)
+  const [failedDestinations, setFailedDestinations] = useState(new Set())
 
   const timerRef = useRef(null)
   const statsRef = useRef(null)
@@ -113,6 +114,12 @@ export default function StreamPage() {
     const socket = io(import.meta.env.VITE_API_URL.replace('/api', ''))
     socket.emit('join:session', sessionId)
     socket.on('stream:progress', (data) => setProgress(data.timemark))
+    socket.on('stream:destination:error', (data) => {
+      if (data?.key) {
+        setFailedDestinations((prev) => new Set([...prev, data.key]))
+        toast.error(`${data.label || data.platform} stream error`, { id: data.key })
+      }
+    })
     socket.on('stream:error', () => {
       toast.error('Stream error occurred')
       setStreaming(false)
@@ -305,27 +312,56 @@ export default function StreamPage() {
               </div>
 
               {streaming && liveStats?.active && (
-                <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100">
-                  {[
-                    {
-                      label: 'Live Viewers',
-                      value: (liveStats.accounts || []).reduce((sum, a) => sum + (a.viewers || 0), 0),
-                    },
-                    {
-                      label: 'YouTube Likes',
-                      value: (liveStats.accounts || [])
-                        .filter((a) => a.platform === 'youtube')
-                        .reduce((sum, a) => sum + (a.likes || 0), 0),
-                    },
-                    { label: 'Accounts Live', value: liveStats.accounts?.length ?? liveAccounts.length },
-                  ].map((s) => (
-                    <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
-                      <p className="text-xl font-bold text-gray-900">{s.value}</p>
-                      <p className="text-gray-500 text-xs mt-0.5 flex items-center justify-center gap-1">
-                        <Activity size={11} /> {s.label}
-                      </p>
-                    </div>
-                  ))}
+                <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      {
+                        label: 'Live Viewers',
+                        value: (liveStats.accounts || []).reduce((sum, a) => sum + (a.viewers || 0), 0),
+                      },
+                      {
+                        label: 'YouTube Likes',
+                        value: (liveStats.accounts || [])
+                          .filter((a) => a.platform === 'youtube')
+                          .reduce((sum, a) => sum + (a.likes || 0), 0),
+                      },
+                      { label: 'Destinations', value: liveAccounts.length },
+                    ].map((s) => (
+                      <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                        <p className="text-xl font-bold text-gray-900">{s.value}</p>
+                        <p className="text-gray-500 text-xs mt-0.5 flex items-center justify-center gap-1">
+                          <Activity size={11} /> {s.label}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {liveAccounts.map((acc) => {
+                      const platformId = acc.platform || acc.name
+                      const meta = getPlatformMeta(platformId)
+                      const stat = (liveStats.accounts || []).find(
+                        (a) => a.platform === platformId && a.accountId === acc.accountId
+                      )
+                      const destKey = `${platformId}:${acc.accountId}`
+                      const failed = failedDestinations.has(destKey)
+                      return (
+                        <li
+                          key={destKey}
+                          className={`text-xs rounded-lg px-3 py-2 border flex justify-between items-center gap-2 ${
+                            failed ? 'bg-red-50 border-red-200 text-red-800' : 'bg-white border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          <span className="truncate font-medium">
+                            <span className={`inline-block w-2 h-2 rounded-full ${meta.color} mr-1`} />
+                            {meta.label} · {acc.label}
+                          </span>
+                          <span className="shrink-0 tabular-nums">
+                            {failed ? 'Error' : `${stat?.viewers ?? 0} viewers`}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
                 </div>
               )}
             </div>
@@ -433,12 +469,18 @@ export default function StreamPage() {
                             const isLive = streaming && activeAccounts.some(
                               (a) => a.accountId === acc.accountId && (a.platform || a.name) === p.id
                             )
+                            const destKey = accountSelectionKey(p.id, acc.accountId)
+                            const destFailed = failedDestinations.has(destKey)
                             return (
                               <li key={acc.accountId}>
                                 <label
                                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 m-1 ${
                                     streaming
-                                      ? isLive ? 'bg-red-50' : 'opacity-50 cursor-not-allowed'
+                                      ? destFailed
+                                        ? 'bg-amber-50 opacity-80 cursor-not-allowed'
+                                        : isLive
+                                          ? 'bg-red-50'
+                                          : 'opacity-50 cursor-not-allowed'
                                       : isSelected ? 'bg-brand-50' : 'hover:bg-gray-50'
                                   }`}
                                 >
@@ -450,8 +492,11 @@ export default function StreamPage() {
                                     className="accent-brand-600 w-4 h-4 shrink-0"
                                   />
                                   <span className="text-sm font-medium text-gray-900 truncate">{acc.label}</span>
-                                  {isLive && (
+                                  {isLive && !destFailed && (
                                     <span className="ml-auto badge bg-red-50 text-red-600 border-red-100 text-[10px]">LIVE</span>
+                                  )}
+                                  {isLive && destFailed && (
+                                    <span className="ml-auto badge bg-amber-50 text-amber-700 border-amber-200 text-[10px]">ERROR</span>
                                   )}
                                 </label>
                               </li>

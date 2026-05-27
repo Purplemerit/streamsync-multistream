@@ -4,11 +4,13 @@ import AppLayout from '../../components/common/AppLayout'
 import { PLATFORMS as BASE_PLATFORMS } from '../../constants/platforms'
 import toast from 'react-hot-toast'
 import {
-  Eye, EyeOff, Trash2, Plus, X, Link2, LinkIcon, CheckCircle2, Loader2,
+  Eye, EyeOff, Trash2, Plus, X, Link2, LinkIcon, CheckCircle2, Loader2, Pencil,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
 const MAX_ACCOUNTS = 15
+const MASKED_KEY = '••••••••••••••••••••••••'
+const OAUTH_PLATFORMS = ['youtube', 'twitch']
 
 const KEY_TYPE = {
   youtube: 'permanent', twitch: 'permanent', facebook: 'permanent',
@@ -29,16 +31,25 @@ const PLATFORM_NOTES = {
   bigo: 'BIGO LIVE is not available in India. Session keys must be refreshed before each stream.',
 }
 
-const OAUTH_PLATFORMS = ['youtube', 'twitch']
-
 const emptyAddForm = () => ({ label: '', streamKey: '', rtmpUrl: '', twitchUsername: '' })
+const emptyEditForm = (acc) => ({
+  label: acc.label || '',
+  streamKey: MASKED_KEY,
+  rtmpUrl: acc.rtmpUrl || '',
+  twitchUsername: '',
+})
+
+const oauthConnKey = (platformId, accountId) => `${platformId}::${accountId}`
 
 export default function StreamKeysPage() {
   const [accounts, setAccounts] = useState({})
   const [visibleKeys, setVisibleKeys] = useState({})
   const [openAddForm, setOpenAddForm] = useState(null)
+  const [openEditForm, setOpenEditForm] = useState(null)
   const [addForms, setAddForms] = useState({})
+  const [editForms, setEditForms] = useState({})
   const [saving, setSaving] = useState(null)
+  const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [loading, setLoading] = useState(true)
   const [connections, setConnections] = useState({})
@@ -50,12 +61,14 @@ export default function StreamKeysPage() {
       .catch(() => toast.error('Failed to load stream keys'))
   }
 
-  useEffect(() => {
-    loadAccounts().finally(() => setLoading(false))
-
-    API.get('/auth/platform/status')
+  const loadConnections = () => {
+    return API.get('/auth/platform/status')
       .then((res) => setConnections(res.data))
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    Promise.all([loadAccounts(), loadConnections()]).finally(() => setLoading(false))
 
     const connected = searchParams.get('connected')
     const error = searchParams.get('error')
@@ -79,7 +92,17 @@ export default function StreamKeysPage() {
     }))
   }
 
+  const getEditForm = (formKey, acc) => editForms[formKey] || emptyEditForm(acc)
+
+  const updateEditForm = (formKey, acc, field, value) => {
+    setEditForms((prev) => ({
+      ...prev,
+      [formKey]: { ...getEditForm(formKey, acc), [field]: value },
+    }))
+  }
+
   const openForm = (platformId) => {
+    setOpenEditForm(null)
     setOpenAddForm(platformId)
     setAddForms((prev) => ({ ...prev, [platformId]: emptyAddForm() }))
   }
@@ -93,19 +116,36 @@ export default function StreamKeysPage() {
     })
   }
 
-  const handleOAuthConnect = async (platform) => {
+  const openEdit = (platformId, acc) => {
+    const formKey = accountKey(platformId, acc.accountId)
+    setOpenAddForm(null)
+    setOpenEditForm(formKey)
+    setEditForms((prev) => ({ ...prev, [formKey]: emptyEditForm(acc) }))
+  }
+
+  const closeEdit = (formKey) => {
+    setOpenEditForm((current) => (current === formKey ? null : current))
+    setEditForms((prev) => {
+      const next = { ...prev }
+      delete next[formKey]
+      return next
+    })
+  }
+
+  const handleOAuthConnect = async (platform, accountId) => {
     try {
-      const res = await API.get(`/auth/platform/${platform}`)
+      const res = await API.get(`/auth/platform/${platform}`, { params: { accountId } })
       window.location.href = res.data.url
     } catch {
       toast.error(`Failed to start ${platform} connection`)
     }
   }
 
-  const handleOAuthDisconnect = async (platform) => {
+  const handleOAuthDisconnect = async (platform, accountId) => {
     try {
-      await API.delete(`/auth/platform/disconnect/${platform}`)
-      setConnections((prev) => ({ ...prev, [platform]: { connected: false } }))
+      await API.delete(`/auth/platform/disconnect/${platform}/${accountId}`)
+      const key = oauthConnKey(platform, accountId)
+      setConnections((prev) => ({ ...prev, [key]: { connected: false } }))
       toast.success(`${platform} disconnected`)
     } catch {
       toast.error(`Failed to disconnect ${platform}`)
@@ -142,6 +182,45 @@ export default function StreamKeysPage() {
     }
   }
 
+  const handleEditSave = async (platformId, accountId, formKey) => {
+    const acc = (accounts[platformId] || []).find((a) => a.accountId === accountId)
+    if (!acc) return
+
+    const form = getEditForm(formKey, acc)
+    const platform = PLATFORMS.find((p) => p.id === platformId)
+    const payload = {}
+
+    if (form.label.trim() && form.label.trim() !== acc.label) {
+      payload.label = form.label.trim()
+    }
+    if (form.streamKey !== MASKED_KEY && form.streamKey.trim()) {
+      payload.streamKey = form.streamKey.trim()
+    }
+    if (platform?.needsUrl && form.rtmpUrl !== (acc.rtmpUrl || '')) {
+      payload.rtmpUrl = form.rtmpUrl.trim()
+    }
+    if (platformId === 'twitch' && form.twitchUsername.trim()) {
+      payload.twitchUsername = form.twitchUsername.trim()
+    }
+
+    if (Object.keys(payload).length === 0) {
+      closeEdit(formKey)
+      return
+    }
+
+    setEditing(formKey)
+    try {
+      await API.patch(`/streamkeys/update/${platformId}/${accountId}`, payload)
+      toast.success('Account updated!')
+      closeEdit(formKey)
+      await loadAccounts()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update account')
+    } finally {
+      setEditing(null)
+    }
+  }
+
   const handleDelete = async (platformId, accountId, label) => {
     if (!confirm(`Remove "${label}" from ${platformId}?`)) return
     setDeleting(accountKey(platformId, accountId))
@@ -156,35 +235,32 @@ export default function StreamKeysPage() {
     }
   }
 
-  const OAuthBanner = ({ platformId, label }) => {
-    const isConnected = connections[platformId]?.connected
-    const username = connections[platformId]?.username
+  const AccountOAuth = ({ platformId, accountId, label }) => {
+    const conn = connections[oauthConnKey(platformId, accountId)]
+    const isConnected = conn?.connected
+    const username = conn?.username
 
     return (
-      <div className={`rounded-lg px-3 py-2.5 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+      <div className={`rounded-lg px-3 py-2 mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${
         isConnected ? 'bg-green-50 border border-green-200' : 'bg-violet-50 border border-violet-200'
       }`}>
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-2 min-w-0">
           {isConnected
-            ? <CheckCircle2 size={16} className="text-green-600 mt-0.5 shrink-0" />
-            : <LinkIcon size={16} className="text-violet-600 mt-0.5 shrink-0" />
+            ? <CheckCircle2 size={14} className="text-green-600 mt-0.5 shrink-0" />
+            : <LinkIcon size={14} className="text-violet-600 mt-0.5 shrink-0" />
           }
-          <div>
-            <p className={`text-xs font-medium ${isConnected ? 'text-green-800' : 'text-violet-800'}`}>
-              {isConnected
-                ? `Connected for Live Stats${username ? ` · @${username}` : ''}`
-                : 'Connect account to enable Live Stats'}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">
-              {isConnected
-                ? 'Viewers, likes and chat are tracked automatically'
-                : `Link your ${label} account to see real-time stats`}
-            </p>
-          </div>
+          <p className={`text-xs ${isConnected ? 'text-green-800' : 'text-violet-800'}`}>
+            {isConnected
+              ? `Connected ✅${username ? ` · @${username}` : ''}`
+              : 'Connect for Live Stats'}
+          </p>
         </div>
         <button
-          onClick={() => isConnected ? handleOAuthDisconnect(platformId) : handleOAuthConnect(platformId)}
-          className={`text-xs font-medium px-3 py-1.5 rounded-lg transition shrink-0 ${
+          type="button"
+          onClick={() => (isConnected
+            ? handleOAuthDisconnect(platformId, accountId)
+            : handleOAuthConnect(platformId, accountId))}
+          className={`text-xs font-medium px-2.5 py-1 rounded-lg transition shrink-0 ${
             isConnected
               ? 'bg-white border border-red-200 text-red-600 hover:bg-red-50'
               : 'bg-violet-600 text-white hover:bg-violet-700'
@@ -202,6 +278,7 @@ export default function StreamKeysPage() {
     const isFormOpen = openAddForm === platform.id
     const form = getAddForm(platform.id)
     const note = PLATFORM_NOTES[platform.id]
+    const showOAuth = OAUTH_PLATFORMS.includes(platform.id)
 
     return (
       <div className="card-interactive overflow-hidden h-full flex flex-col">
@@ -222,7 +299,7 @@ export default function StreamKeysPage() {
           </div>
           {!atLimit && (
             <button
-              onClick={() => isFormOpen ? closeForm(platform.id) : openForm(platform.id)}
+              onClick={() => (isFormOpen ? closeForm(platform.id) : openForm(platform.id))}
               className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg transition"
             >
               {isFormOpen ? <X size={14} /> : <Plus size={14} />}
@@ -232,10 +309,6 @@ export default function StreamKeysPage() {
         </div>
 
         <div className="px-4 sm:px-5 py-4">
-          {OAUTH_PLATFORMS.includes(platform.id) && (
-            <OAuthBanner platformId={platform.id} label={platform.label} />
-          )}
-
           {note && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 leading-relaxed">
               {note}
@@ -248,49 +321,49 @@ export default function StreamKeysPage() {
             }`}
           >
             <div className="overflow-hidden">
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-medium text-slate-700">New {platform.label} account</p>
-              <input
-                type="text"
-                placeholder="Label (e.g. Main Channel, Gaming Channel)"
-                value={form.label}
-                onChange={(e) => updateAddForm(platform.id, 'label', e.target.value)}
-                className="input-field rounded-lg py-2"
-              />
-              <input
-                type="text"
-                placeholder={`${platform.label} stream key`}
-                value={form.streamKey}
-                onChange={(e) => updateAddForm(platform.id, 'streamKey', e.target.value)}
-                className="input-field rounded-lg py-2 font-mono"
-              />
-              {platform.needsUrl && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-medium text-slate-700">New {platform.label} account</p>
                 <input
                   type="text"
-                  placeholder={`${platform.label} Stream URL (rtmps://...)`}
-                  value={form.rtmpUrl}
-                  onChange={(e) => updateAddForm(platform.id, 'rtmpUrl', e.target.value)}
-                  className="input-field rounded-lg py-2 font-mono"
-                />
-              )}
-              {platform.id === 'twitch' && (
-                <input
-                  type="text"
-                  placeholder="Twitch username (for live viewer count)"
-                  value={form.twitchUsername}
-                  onChange={(e) => updateAddForm(platform.id, 'twitchUsername', e.target.value)}
+                  placeholder="Label (e.g. Main Channel, Gaming Channel)"
+                  value={form.label}
+                  onChange={(e) => updateAddForm(platform.id, 'label', e.target.value)}
                   className="input-field rounded-lg py-2"
                 />
-              )}
-              <button
-                onClick={() => handleSave(platform.id)}
-                disabled={saving === platform.id}
-                className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
-              >
-                {saving === platform.id ? <Loader2 size={14} className="animate-spin" /> : null}
-                Save Account
-              </button>
-            </div>
+                <input
+                  type="text"
+                  placeholder={`${platform.label} stream key`}
+                  value={form.streamKey}
+                  onChange={(e) => updateAddForm(platform.id, 'streamKey', e.target.value)}
+                  className="input-field rounded-lg py-2 font-mono"
+                />
+                {platform.needsUrl && (
+                  <input
+                    type="text"
+                    placeholder={`${platform.label} Stream URL (rtmps://...)`}
+                    value={form.rtmpUrl}
+                    onChange={(e) => updateAddForm(platform.id, 'rtmpUrl', e.target.value)}
+                    className="input-field rounded-lg py-2 font-mono"
+                  />
+                )}
+                {platform.id === 'twitch' && (
+                  <input
+                    type="text"
+                    placeholder="Twitch username (for live viewer count)"
+                    value={form.twitchUsername}
+                    onChange={(e) => updateAddForm(platform.id, 'twitchUsername', e.target.value)}
+                    className="input-field rounded-lg py-2"
+                  />
+                )}
+                <button
+                  onClick={() => handleSave(platform.id)}
+                  disabled={saving === platform.id}
+                  className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                >
+                  {saving === platform.id ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Save Account
+                </button>
+              </div>
             </div>
           </div>
 
@@ -302,40 +375,129 @@ export default function StreamKeysPage() {
             <ul className="space-y-3">
               {platformAccounts.map((acc) => {
                 const visKey = accountKey(platform.id, acc.accountId)
+                const formKey = visKey
                 const isVisible = visibleKeys[visKey]
                 const isDeleting = deleting === visKey
+                const isEditOpen = openEditForm === formKey
+                const editForm = getEditForm(formKey, acc)
+                const isSavingEdit = editing === formKey
 
                 return (
                   <li
                     key={acc.accountId}
-                    className="flex flex-col sm:flex-row sm:items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-3"
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-3"
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-slate-900 truncate">{acc.label}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="flex-1 font-mono text-xs text-slate-500 truncate">
-                          {isVisible ? acc.streamKey : '••••••••••••••••••••••••'}
-                        </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-slate-900 truncate">{acc.label}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="flex-1 font-mono text-xs text-slate-500 truncate">
+                            {isVisible ? acc.streamKey : '••••••••••••••••••••••••'}
+                          </p>
+                          <button
+                            onClick={() => toggleVisibility(platform.id, acc.accountId)}
+                            className="text-slate-400 hover:text-slate-600 p-1 shrink-0"
+                            aria-label={isVisible ? 'Hide key' : 'Show key'}
+                          >
+                            {isVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                        {acc.rtmpUrl && (
+                          <p className="text-xs text-slate-400 mt-1 truncate font-mono">{acc.rtmpUrl}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 self-start sm:self-center">
                         <button
-                          onClick={() => toggleVisibility(platform.id, acc.accountId)}
-                          className="text-slate-400 hover:text-slate-600 p-1 shrink-0"
-                          aria-label={isVisible ? 'Hide key' : 'Show key'}
+                          onClick={() => (isEditOpen ? closeEdit(formKey) : openEdit(platform.id, acc))}
+                          className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg transition"
+                          title="Edit account"
                         >
-                          {isVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                          <Pencil size={13} />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(platform.id, acc.accountId, acc.label)}
+                          disabled={isDeleting}
+                          className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition disabled:opacity-60"
+                        >
+                          {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          Delete
                         </button>
                       </div>
-                      {acc.rtmpUrl && (
-                        <p className="text-xs text-slate-400 mt-1 truncate font-mono">{acc.rtmpUrl}</p>
-                      )}
                     </div>
-                    <button
-                      onClick={() => handleDelete(platform.id, acc.accountId, acc.label)}
-                      disabled={isDeleting}
-                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition shrink-0 self-start sm:self-center disabled:opacity-60"
+
+                    {showOAuth && (
+                      <AccountOAuth
+                        platformId={platform.id}
+                        accountId={acc.accountId}
+                        label={platform.label}
+                      />
+                    )}
+
+                    <div
+                      className={`grid transition-all duration-200 ease-out ${
+                        isEditOpen ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'
+                      }`}
                     >
-                      {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                      Delete
-                    </button>
+                      <div className="overflow-hidden">
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                          <p className="text-sm font-medium text-slate-700">Edit {acc.label}</p>
+                          <input
+                            type="text"
+                            placeholder="Label"
+                            value={editForm.label}
+                            onChange={(e) => updateEditForm(formKey, acc, 'label', e.target.value)}
+                            className="input-field rounded-lg py-2"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Stream key (leave masked to keep current)"
+                            value={editForm.streamKey}
+                            onChange={(e) => updateEditForm(formKey, acc, 'streamKey', e.target.value)}
+                            onFocus={() => {
+                              if (editForm.streamKey === MASKED_KEY) {
+                                updateEditForm(formKey, acc, 'streamKey', '')
+                              }
+                            }}
+                            className="input-field rounded-lg py-2 font-mono"
+                          />
+                          {platform.needsUrl && (
+                            <input
+                              type="text"
+                              placeholder="Stream URL"
+                              value={editForm.rtmpUrl}
+                              onChange={(e) => updateEditForm(formKey, acc, 'rtmpUrl', e.target.value)}
+                              className="input-field rounded-lg py-2 font-mono"
+                            />
+                          )}
+                          {platform.id === 'twitch' && (
+                            <input
+                              type="text"
+                              placeholder="Twitch username (optional)"
+                              value={editForm.twitchUsername}
+                              onChange={(e) => updateEditForm(formKey, acc, 'twitchUsername', e.target.value)}
+                              className="input-field rounded-lg py-2"
+                            />
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEditSave(platform.id, acc.accountId, formKey)}
+                              disabled={isSavingEdit}
+                              className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                            >
+                              {isSavingEdit ? <Loader2 size={14} className="animate-spin" /> : null}
+                              Save
+                            </button>
+                            <button
+                              onClick={() => closeEdit(formKey)}
+                              className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-100 transition"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </li>
                 )
               })}
@@ -359,46 +521,46 @@ export default function StreamKeysPage() {
       subtitle={`Manage multiple accounts per platform — up to ${MAX_ACCOUNTS} each.`}
       maxWidth="max-w-5xl"
     >
-          <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
-            <Link2 size={18} className="text-violet-600 shrink-0 mt-0.5" />
-            <p className="text-violet-800 text-sm">
-              Connect <strong>YouTube</strong> and <strong>Twitch</strong> for real-time Live Stats.
-              Stream keys and OAuth connections are managed separately.
+      <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
+        <Link2 size={18} className="text-violet-600 shrink-0 mt-0.5" />
+        <p className="text-violet-800 text-sm">
+          Connect <strong>YouTube</strong> and <strong>Twitch</strong> per account for real-time Live Stats.
+          Stream keys and OAuth are managed separately for each saved account.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-500 py-12 justify-center">
+          <Loader2 size={20} className="animate-spin" />
+          Loading accounts...
+        </div>
+      ) : (
+        <div className="space-y-8">
+          <section>
+            <h2 className="text-base font-semibold text-slate-800 mb-1">Permanent Keys</h2>
+            <p className="text-slate-500 text-xs sm:text-sm mb-4">
+              Save once and reuse — keys stay valid until you reset them on the platform.
             </p>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center gap-2 text-slate-500 py-12 justify-center">
-              <Loader2 size={20} className="animate-spin" />
-              Loading accounts...
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {permanentPlatforms.map((p) => (
+                <PlatformCard key={p.id} platform={p} />
+              ))}
             </div>
-          ) : (
-            <div className="space-y-8">
-              <section>
-                <h2 className="text-base font-semibold text-slate-800 mb-1">Permanent Keys</h2>
-                <p className="text-slate-500 text-xs sm:text-sm mb-4">
-                  Save once and reuse — keys stay valid until you reset them on the platform.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {permanentPlatforms.map((p) => (
-                    <PlatformCard key={p.id} platform={p} />
-                  ))}
-                </div>
-              </section>
+          </section>
 
-              <section>
-                <h2 className="text-heading text-gray-900 mb-1">Session Keys</h2>
-                <p className="text-caption text-gray-500 mb-4">
-                  New key each session — update before going live.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {sessionPlatforms.map((p) => (
-                    <PlatformCard key={p.id} platform={p} />
-                  ))}
-                </div>
-              </section>
+          <section>
+            <h2 className="text-heading text-gray-900 mb-1">Session Keys</h2>
+            <p className="text-caption text-gray-500 mb-4">
+              New key each session — update before going live.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sessionPlatforms.map((p) => (
+                <PlatformCard key={p.id} platform={p} />
+              ))}
             </div>
-          )}
+          </section>
+        </div>
+      )}
     </AppLayout>
   )
 }

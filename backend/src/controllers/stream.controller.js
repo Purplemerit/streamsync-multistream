@@ -57,10 +57,13 @@ const startStream = async (req, res) => {
       startedAt: new Date()
     });
 
+    const destinationSummary = platformList
+      .map((p) => `${p.name}${p.label ? ` (${p.label})` : ''}`)
+      .join(', ');
     await notifyAdmins(
       'system',
       'Stream Started',
-      `${req.user.name || 'A user'} started streaming "${video.title}" to ${platformList.map(p => p.name).join(', ')}.`
+      `${req.user.name || 'A user'} started streaming "${video.title}" to ${platformList.length} destination(s): ${destinationSummary}.`
     );
 
     const io = req.app.get('io');

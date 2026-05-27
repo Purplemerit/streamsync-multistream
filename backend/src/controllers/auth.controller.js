@@ -1,8 +1,18 @@
 const User = require('../models/User.model');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 const { validationResult } = require('express-validator');
 const { createNotification, notifyAdmins } = require('../services/notification.service');
+
+const formatUser = (user) => ({
+  id: user._id,
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  avatar: user.avatar,
+});
 
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -71,16 +81,74 @@ const login = async (req, res) => {
     const token = generateToken(user._id);
     res.json({
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-      }
+      user: formatUser(user),
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// GOOGLE SIGN-IN (One Tap / credential from @react-oauth/google)
+const googleTokenLogin = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ message: 'Google credential token is required' });
+    }
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ message: 'Google OAuth is not configured on the server' });
+    }
+
+    const { data: payload } = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+      params: { id_token: token },
+    });
+
+    if (payload.aud !== process.env.GOOGLE_CLIENT_ID) {
+      return res.status(401).json({ message: 'Invalid Google token audience' });
+    }
+
+    const email = payload.email;
+    if (!email) {
+      return res.status(400).json({ message: 'Google account email not available' });
+    }
+
+    let user = await User.findOne({ $or: [{ email }, { googleId: payload.sub }] });
+    let isNew = false;
+
+    if (!user) {
+      isNew = true;
+      user = await User.create({
+        name: payload.name || email.split('@')[0],
+        email,
+        googleId: payload.sub,
+        avatar: payload.picture,
+      });
+      await createNotification(
+        user._id,
+        'system',
+        'Welcome to StreamSync! 🎉',
+        'Start by uploading a video and saving your stream keys to go live on multiple platforms at once.'
+      );
+      await notifyAdmins(
+        'new_user',
+        'New User Registered',
+        `${user.name} (${email}) just created an account via Google.`
+      );
+    } else if (!user.googleId) {
+      user.googleId = payload.sub;
+      if (payload.picture) user.avatar = payload.picture;
+      await user.save();
+    }
+
+    const jwtToken = generateToken(user._id);
+    res.json({
+      token: jwtToken,
+      user: formatUser(user),
+      isNew,
+    });
+  } catch (err) {
+    console.error('Google token login error:', err.response?.data || err.message);
+    res.status(401).json({ message: 'Google login failed — invalid or expired token' });
   }
 };
 
@@ -104,4 +172,4 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { register, login, googleCallback, getMe };
+module.exports = { register, login, googleTokenLogin, googleCallback, getMe };

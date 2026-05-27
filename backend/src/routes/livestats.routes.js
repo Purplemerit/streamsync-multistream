@@ -6,6 +6,7 @@ const {
   getUserAllStreamsStats,
   getAdminGlobalStats,
   deleteChatHistory,
+  deleteStreamFromHistory,
 } = require('../controllers/livestats.controller')
 const { protect } = require('../middleware/auth.middleware')
 const { isAdmin } = require('../middleware/admin.middleware')
@@ -16,6 +17,7 @@ router.get('/active', protect, getActiveStreamStats)
 router.get('/my-streams', protect, getUserAllStreamsStats)
 router.get('/stream/:streamId', protect, getStreamStats)
 router.post('/fetch/:streamId', protect, fetchAndSaveStats)
+router.delete('/stream/:streamId', protect, deleteStreamFromHistory)
 router.delete('/chat/:streamId', protect, deleteChatHistory)
 router.get('/admin/global', protect, isAdmin, getAdminGlobalStats)
 

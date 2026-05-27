@@ -9,6 +9,6 @@ router.get('/youtube/callback', youtubeCallback)
 router.get('/twitch', protect, twitchAuthURL)
 router.get('/twitch/callback', twitchCallback)
 router.get('/status', protect, getConnectionStatus)
-router.delete('/disconnect/:platform', protect, disconnectPlatform)
+router.delete('/disconnect/:platform/:accountId', protect, disconnectPlatform)
 
 module.exports = router

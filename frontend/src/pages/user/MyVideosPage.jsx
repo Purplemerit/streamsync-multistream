@@ -1,34 +1,42 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import API from '../../utils/axios'
-import Navbar from '../../components/common/Navbar'
-import Sidebar from '../../components/common/Sidebar'
+import AppLayout from '../../components/common/AppLayout'
 import toast from 'react-hot-toast'
-import { Trash2, Upload, Video, Play } from 'lucide-react'
+import { Trash2, Upload, Video, Play, CloudUpload } from 'lucide-react'
 import VideoModal from '../../components/video/VideoModal'
+import { SkeletonGrid } from '../../components/ui/Skeleton'
+import EmptyState from '../../components/ui/EmptyState'
+import ErrorState from '../../components/ui/ErrorState'
+import { deferEffect } from '../../utils/deferEffect'
 
 export default function MyVideosPage() {
   const [videos, setVideos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [title, setTitle] = useState('')
   const [file, setFile] = useState(null)
   const [progress, setProgress] = useState(0)
   const [previewVideo, setPreviewVideo] = useState(null)
-
-  useEffect(() => {
-    fetchVideos()
-  }, [])
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef(null)
 
   const fetchVideos = async () => {
+    setError(false)
     try {
       const res = await API.get('/videos/my')
       setVideos(res.data)
-    } catch (err) {
+    } catch {
+      setError(true)
       toast.error('Failed to load videos')
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    deferEffect(() => fetchVideos())
+  }, [])
 
   const handleUpload = async (e) => {
     e.preventDefault()
@@ -44,10 +52,9 @@ export default function MyVideosPage() {
     try {
       await API.post('/videos/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (e) => {
-          const percent = Math.round((e.loaded * 100) / e.total)
-          setProgress(percent)
-        }
+        onUploadProgress: (ev) => {
+          setProgress(Math.round((ev.loaded * 100) / ev.total))
+        },
       })
       toast.success('Video uploaded successfully!')
       setTitle('')
@@ -61,14 +68,22 @@ export default function MyVideosPage() {
     }
   }
 
+  const onDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f?.type?.startsWith('video/')) setFile(f)
+    else toast.error('Please drop a video file')
+  }
+
   const handleDelete = async (e, id) => {
     e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this video?')) return
+    if (!confirm('Delete this video?')) return
     try {
       await API.delete(`/videos/${id}`)
       toast.success('Video deleted')
-      setVideos(videos.filter(v => v._id !== id))
-    } catch (err) {
+      setVideos(videos.filter((v) => v._id !== id))
+    } catch {
       toast.error('Failed to delete video')
     }
   }
@@ -80,113 +95,132 @@ export default function MyVideosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
+    <AppLayout title="My Videos" subtitle="Upload and manage pre-recorded videos before going live.">
+      <div className="card p-6 mb-8">
+        <h2 className="text-heading text-gray-900 mb-4 flex items-center gap-2">
+          <Upload size={18} className="text-brand-600" /> Upload new video
+        </h2>
 
-          <h1 className="text-3xl font-bold mb-8">My Videos</h1>
-
-          {/* Upload Form */}
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-8">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Upload size={18} className="text-purple-400" />
-              Upload New Video
-            </h2>
-
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="text-gray-300 text-sm mb-1 block">Video Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter video title"
-                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 outline-none border border-gray-700 focus:border-purple-500 transition"
-                />
-              </div>
-
-              <div>
-                <label className="text-gray-300 text-sm mb-1 block">Select Video File</label>
-                <input
-                  type="file"
-                  accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
-                  onChange={(e) => setFile(e.target.files[0])}
-                  className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 outline-none border border-gray-700 focus:border-purple-500 transition file:mr-4 file:py-1 file:px-4 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white"
-                />
-              </div>
-
-              {uploading && (
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-purple-500 h-2 rounded-full transition-all"
-                    style={{ width: `${progress}%` }}
-                  ></div>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={uploading}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-6 py-3 rounded-lg transition disabled:opacity-50"
-              >
-                {uploading ? `Uploading ${progress}%...` : 'Upload Video'}
-              </button>
-            </form>
+        <form onSubmit={handleUpload} className="space-y-4">
+          <div>
+            <label className="text-caption font-semibold text-gray-600 block mb-1.5">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="My launch stream"
+              className="input-field"
+            />
           </div>
 
-          {/* Videos List */}
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Video size={18} className="text-purple-400" />
-              Uploaded Videos
-              <span className="ml-auto text-xs text-gray-500">Click any video to preview</span>
-            </h2>
-
-            {loading ? (
-              <p className="text-gray-500">Loading videos...</p>
-            ) : videos.length === 0 ? (
-              <p className="text-gray-500">No videos uploaded yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {videos.map((video) => (
-                  <div
-                    key={video._id}
-                    onClick={() => setPreviewVideo(video)}
-                    style={{ cursor: 'pointer' }}
-                    className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-4 hover:bg-gray-700 transition border border-transparent hover:border-purple-500/30"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="bg-purple-600 p-3 rounded-xl">
-                        <Play size={18} />
-                      </div>
-                      <div>
-                        <p className="font-medium">{video.title}</p>
-                        <p className="text-xs text-gray-400">
-                          {formatSize(video.filesize)} • {new Date(video.createdAt).toLocaleDateString()} • Click to preview
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={(e) => handleDelete(e, video._id)}
-                      className="text-red-400 hover:text-red-300 transition p-2"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 ${
+              dragOver
+                ? 'border-brand-400 bg-brand-50 shadow-glow'
+                : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50'
+            }`}
+          >
+            <CloudUpload size={40} className={`mx-auto mb-3 ${dragOver ? 'text-brand-600' : 'text-gray-400'}`} />
+            <p className="font-medium text-gray-900">
+              {file ? file.name : 'Drag & drop or click to browse'}
+            </p>
+            <p className="text-caption text-gray-500 mt-1">MP4, MOV, AVI, MKV — max 2GB</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files[0])}
+            />
           </div>
 
-          {previewVideo && (
-            <VideoModal video={previewVideo} onClose={() => setPreviewVideo(null)} />
+          {uploading && (
+            <div>
+              <div className="flex justify-between text-caption text-gray-500 mb-1">
+                <span>Uploading...</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-brand-600 h-2 rounded-full transition-all duration-200"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
           )}
 
-        </main>
+          <button type="submit" disabled={uploading} className="btn-primary px-6 py-3">
+            {uploading ? `Uploading ${progress}%...` : 'Upload Video'}
+          </button>
+        </form>
       </div>
-    </div>
+
+      <div>
+        <h2 className="text-heading text-gray-900 mb-4 flex items-center gap-2">
+          <Video size={18} className="text-brand-600" />
+          Your library
+          {!loading && <span className="text-caption text-gray-400 font-normal ml-1">({videos.length})</span>}
+        </h2>
+
+        {error ? (
+          <ErrorState onRetry={() => { setLoading(true); fetchVideos() }} />
+        ) : loading ? (
+          <SkeletonGrid count={6} />
+        ) : videos.length === 0 ? (
+          <div className="card">
+            <EmptyState
+              icon={Video}
+              title="No videos yet"
+              description="Upload your first pre-recorded video to start multistreaming."
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {videos.map((video) => (
+              <div
+                key={video._id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setPreviewVideo(video)}
+                onKeyDown={(e) => e.key === 'Enter' && setPreviewVideo(video)}
+                className="card-interactive overflow-hidden group cursor-pointer"
+              >
+                <div className="aspect-video bg-gradient-to-br from-gray-100 to-brand-50 relative flex items-center justify-center">
+                  <div className="absolute inset-0 bg-brand-900/0 group-hover:bg-brand-900/40 transition-all duration-200 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-white/90 text-brand-600 flex items-center justify-center opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-200 shadow-card">
+                      <Play size={24} fill="currentColor" className="ml-1" />
+                    </div>
+                  </div>
+                  <Video size={32} className="text-gray-300 group-hover:opacity-20 transition-opacity duration-200" />
+                </div>
+                <div className="p-4 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{video.title}</p>
+                    <p className="text-caption text-gray-500 mt-0.5">
+                      {formatSize(video.filesize)} · {new Date(video.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(e, video._id)}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 shrink-0"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {previewVideo && (
+        <VideoModal video={previewVideo} onClose={() => setPreviewVideo(null)} />
+      )}
+    </AppLayout>
   )
 }

@@ -1,27 +1,45 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+
+const loadActiveAccounts = () => {
+  try {
+    const stored = localStorage.getItem('activeAccounts')
+    if (stored) return JSON.parse(stored)
+    const legacy = localStorage.getItem('activePlatforms')
+    if (legacy) {
+      return JSON.parse(legacy).map((id) => ({
+        platform: id,
+        name: id,
+        label: id,
+      }))
+    }
+  } catch {
+    /* ignore */
+  }
+  return []
+}
 
 export function useStream() {
   const [sessionId, setSessionId] = useState(() => localStorage.getItem('activeSessionId') || null)
   const [isStreaming, setIsStreaming] = useState(() => !!localStorage.getItem('activeSessionId'))
-  const [activePlatforms, setActivePlatforms] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('activePlatforms') || '[]') } catch { return [] }
-  })
+  const [activeAccounts, setActiveAccounts] = useState(loadActiveAccounts)
 
-  const startStream = (sid, platforms) => {
+  const startStream = (sid, accounts) => {
     localStorage.setItem('activeSessionId', sid)
-    localStorage.setItem('activePlatforms', JSON.stringify(platforms))
+    localStorage.setItem('activeAccounts', JSON.stringify(accounts))
+    localStorage.removeItem('activePlatforms')
     setSessionId(sid)
     setIsStreaming(true)
-    setActivePlatforms(platforms)
+    setActiveAccounts(accounts)
   }
 
   const stopStream = () => {
     localStorage.removeItem('activeSessionId')
+    localStorage.removeItem('activeAccounts')
     localStorage.removeItem('activePlatforms')
     setSessionId(null)
     setIsStreaming(false)
-    setActivePlatforms([])
+    setActiveAccounts([])
   }
 
-  return { sessionId, isStreaming, activePlatforms, startStream, stopStream }
+  return { sessionId, isStreaming, activeAccounts, startStream, stopStream }
 }

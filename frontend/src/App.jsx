@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './context/AuthContext'
+import { useAuth } from './hooks/useAuth'
 
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/auth/LoginPage'
@@ -19,10 +19,13 @@ import PlatformPopularityPage from './pages/admin/PlatformPopularityPage'
 import StreamKeysSavedPage from './pages/admin/StreamKeysSavedPage'
 import RecentRegistrationsPage from './pages/admin/RecentRegistrationsPage'
 import Loader from './components/common/Loader'
-import TermsPage from './pages/TermsPage'
 import LiveStatsPage from './pages/user/LiveStatsPage'
 import AdminLiveStatsPage from './pages/admin/AdminLiveStatsPage'
 import StreamStatus from './components/stream/StreamStatus'
+import HelpPage from './pages/HelpPage'
+import SupportPage from './pages/SupportPage'
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
+import TermsOfServicePage from './pages/TermsOfServicePage'
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth()
@@ -42,34 +45,35 @@ const AdminRoute = ({ children }) => {
 export default function App() {
   return (
     <BrowserRouter>
-      {/* ✅ StreamStatus is OUTSIDE <Routes> so it persists on all pages */}
       <StreamStatus />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="/support" element={<SupportPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+        <Route path="/terms" element={<Navigate to="/terms-of-service" replace />} />
 
-        {/* User Routes */}
-        <Route path="/dashboard"      element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-        <Route path="/my-videos"      element={<ProtectedRoute><MyVideosPage /></ProtectedRoute>} />
-        <Route path="/stream"         element={<ProtectedRoute><StreamPage /></ProtectedRoute>} />
-        <Route path="/history"        element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
-        <Route path="/stream-keys"    element={<ProtectedRoute><StreamKeysPage /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/my-videos" element={<ProtectedRoute><MyVideosPage /></ProtectedRoute>} />
+        <Route path="/stream" element={<ProtectedRoute><StreamPage /></ProtectedRoute>} />
+        <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+        <Route path="/stream-keys" element={<ProtectedRoute><StreamKeysPage /></ProtectedRoute>} />
         <Route path="/streaming-tips" element={<ProtectedRoute><StreamingTipsPage /></ProtectedRoute>} />
-        <Route path="/monetization"   element={<ProtectedRoute><MonetizationPage /></ProtectedRoute>} />
-        <Route path="/live-stats"     element={<ProtectedRoute><LiveStatsPage /></ProtectedRoute>} />
+        <Route path="/monetization" element={<ProtectedRoute><MonetizationPage /></ProtectedRoute>} />
+        <Route path="/live-stats" element={<ProtectedRoute><LiveStatsPage /></ProtectedRoute>} />
 
-        {/* Admin Routes */}
-        <Route path="/admin"                       element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-        <Route path="/admin/users"                 element={<AdminRoute><ManageUsers /></AdminRoute>} />
-        <Route path="/admin/videos"                element={<AdminRoute><ManageVideos /></AdminRoute>} />
-        <Route path="/admin/streams"               element={<AdminRoute><ManageStreams /></AdminRoute>} />
-        <Route path="/admin/platform-popularity"   element={<AdminRoute><PlatformPopularityPage /></AdminRoute>} />
-        <Route path="/admin/stream-keys-saved"     element={<AdminRoute><StreamKeysSavedPage /></AdminRoute>} />
-        <Route path="/admin/recent-registrations"  element={<AdminRoute><RecentRegistrationsPage /></AdminRoute>} />
-        <Route path="/admin/live-stats"            element={<AdminRoute><AdminLiveStatsPage /></AdminRoute>} />
-
-        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
+        <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        <Route path="/admin/users" element={<AdminRoute><ManageUsers /></AdminRoute>} />
+        <Route path="/admin/videos" element={<AdminRoute><ManageVideos /></AdminRoute>} />
+        <Route path="/admin/streams" element={<AdminRoute><ManageStreams /></AdminRoute>} />
+        <Route path="/admin/platform-popularity" element={<AdminRoute><PlatformPopularityPage /></AdminRoute>} />
+        <Route path="/admin/stream-keys-saved" element={<AdminRoute><StreamKeysSavedPage /></AdminRoute>} />
+        <Route path="/admin/recent-registrations" element={<AdminRoute><RecentRegistrationsPage /></AdminRoute>} />
+        <Route path="/admin/live-stats" element={<AdminRoute><AdminLiveStatsPage /></AdminRoute>} />
       </Routes>
     </BrowserRouter>
   )

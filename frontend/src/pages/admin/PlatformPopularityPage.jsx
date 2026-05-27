@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
 import API from '../../utils/axios'
-import Navbar from '../../components/common/Navbar'
-import Sidebar from '../../components/common/Sidebar'
+import AppLayout from '../../components/common/AppLayout'
 import toast from 'react-hot-toast'
+import { BarChart3, Radio } from 'lucide-react'
+import StatCard from '../../components/ui/StatCard'
+import { SkeletonCard } from '../../components/ui/Skeleton'
+import EmptyState from '../../components/ui/EmptyState'
 
 const PLATFORM_COLORS = {
   youtube: '#FF0000', twitch: '#9146FF', facebook: '#1877F2',
   kick: '#53FC18', rumble: '#85C742', telegram: '#229ED9',
-  x: '#aaaaaa', instagram: '#E1306C',
+  x: '#64748b', instagram: '#E1306C',
 }
+
+const BRAND_GRADIENT = 'linear-gradient(90deg, #7c3aed, #a78bfa)'
 
 export default function PlatformPopularityPage() {
   const [data, setData] = useState(null)
@@ -26,93 +31,106 @@ export default function PlatformPopularityPage() {
     : 1
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
+    <AppLayout
+      title="Platform Popularity"
+      subtitle="Which platforms are streamed to most across all users."
+    >
+      <p className="text-emerald-600 text-xs mb-6 -mt-4 flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        Based on permanent stream history — deleting streams does NOT affect this data
+      </p>
 
-          <h1 className="text-3xl font-bold mb-1">📊 Platform Popularity</h1>
-          <p className="text-gray-400 mb-2">Which platforms are streamed to most across all users.</p>
-          <p className="text-green-400 text-xs mb-8">
-            ✓ Based on permanent stream history — deleting streams does NOT affect this data
-          </p>
-
-          {loading ? <p className="text-gray-500">Loading...</p> : (
-            <>
-              {/* Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                  <p className="text-2xl font-bold">{data?.totalPlatformStreams ?? 0}</p>
-                  <p className="text-gray-400 text-xs mt-1">Total Platform Streams</p>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                  <p className="text-2xl font-bold">{data?.activePlatforms ?? 0}</p>
-                  <p className="text-gray-400 text-xs mt-1">Active Platforms</p>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                  <p className="text-2xl font-bold capitalize">{data?.mostPopular ?? 'N/A'}</p>
-                  <p className="text-gray-400 text-xs mt-1">Most Popular</p>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                  <p className="text-2xl font-bold capitalize">{data?.leastPopular ?? 'N/A'}</p>
-                  <p className="text-gray-400 text-xs mt-1">Least Popular</p>
-                </div>
+      {loading ? (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+          </div>
+          <div className="card p-6 space-y-5">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="space-y-2">
+                <div className="h-4 bg-gray-100 rounded animate-pulse w-1/3" />
+                <div className="h-3 bg-gray-100 rounded-full animate-pulse" />
               </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <StatCard label="Total Platform Streams" value={data?.totalPlatformStreams ?? 0} icon={BarChart3} accent="brand" />
+            <StatCard label="Active Platforms" value={data?.activePlatforms ?? 0} icon={Radio} accent="blue" />
+            <StatCard
+              label="Most Popular"
+              value={data?.mostPopular ?? 'N/A'}
+              accent="emerald"
+              animate={false}
+            />
+            <StatCard
+              label="Least Popular"
+              value={data?.leastPopular ?? 'N/A'}
+              accent="amber"
+              animate={false}
+            />
+          </div>
 
-              {/* Bar Chart */}
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-                <h2 className="text-lg font-semibold mb-1">Stream Count per Platform</h2>
-                <p className="text-gray-500 text-xs mb-6">Sorted by most streamed — permanent data from stream history</p>
+          <div className="card p-6">
+            <h2 className="text-heading text-gray-900 mb-1">Stream Count per Platform</h2>
+            <p className="text-caption text-gray-500 mb-6">Sorted by most streamed — permanent data from stream history</p>
 
-                {!data?.platforms?.length ? (
-                  <div className="text-center py-16">
-                    <p className="text-5xl mb-3">📡</p>
-                    <p className="text-gray-500">No streams yet — data appears after first stream.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    {data.platforms.map(({ name, count, percentage }) => {
-                      const color = PLATFORM_COLORS[name] || '#6b7280'
-                      const pct = (count / maxCount) * 100
-                      return (
-                        <div key={name}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <div style={{
-                                width: 10, height: 10, borderRadius: '50%',
-                                background: color, boxShadow: `0 0 6px ${color}`
-                              }} />
-                              <span className="text-sm capitalize font-medium">
-                                {name === 'x' ? 'X (Twitter)' : name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs text-gray-500">{percentage}%</span>
-                              <span className="text-sm font-bold" style={{ color }}>
-                                {count} stream{count > 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="w-full bg-gray-800 rounded-full h-4">
-                            <div style={{
-                              width: `${pct}%`,
-                              background: `linear-gradient(90deg, ${color}, ${color}88)`,
-                              boxShadow: `0 0 8px ${color}66`,
-                              transition: 'width 0.8s ease',
-                              minWidth: '8px'
-                            }} className="h-4 rounded-full" />
-                          </div>
+            {!data?.platforms?.length ? (
+              <EmptyState
+                icon={Radio}
+                title="No stream data yet"
+                description="Data appears after the first stream is recorded."
+              />
+            ) : (
+              <div className="space-y-5">
+                {data.platforms.map(({ name, count, percentage }, index) => {
+                  const color = PLATFORM_COLORS[name] || '#7c3aed'
+                  const pct = (count / maxCount) * 100
+                  const isTop = index === 0
+                  return (
+                    <div key={name}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-3 h-3 rounded-full ring-2 ring-offset-1 ring-brand-100"
+                            style={{ background: color, boxShadow: `0 0 8px ${color}44` }}
+                          />
+                          <span className="text-sm capitalize font-medium text-gray-900">
+                            {name === 'x' ? 'X (Twitter)' : name}
+                          </span>
+                          {isTop && (
+                            <span className="badge bg-brand-50 text-brand-600 border border-brand-100">Top</span>
+                          )}
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-gray-500 font-medium">{percentage}%</span>
+                          <span className="text-sm font-bold tabular-nums" style={{ color: isTop ? '#7c3aed' : color }}>
+                            {count} stream{count > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div
+                          style={{
+                            width: `${pct}%`,
+                            background: isTop ? BRAND_GRADIENT : `linear-gradient(90deg, ${color}, ${color}99)`,
+                            boxShadow: count > 0 ? `0 0 12px ${isTop ? '#7c3aed33' : color + '44'}` : 'none',
+                            transition: 'width 0.8s ease',
+                            minWidth: count > 0 ? '6px' : '0',
+                          }}
+                          className="h-3 rounded-full"
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            </>
-          )}
-        </main>
-      </div>
-    </div>
+            )}
+          </div>
+        </>
+      )}
+    </AppLayout>
   )
 }

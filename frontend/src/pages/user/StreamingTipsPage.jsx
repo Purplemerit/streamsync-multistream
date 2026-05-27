@@ -1,5 +1,4 @@
-import Navbar from '../../components/common/Navbar'
-import Sidebar from '../../components/common/Sidebar'
+import AppLayout from '../../components/common/AppLayout'
 
 const tips = [
   {
@@ -46,34 +45,26 @@ const tips = [
 
 export default function StreamingTipsPage() {
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
-          <h1 className="text-3xl font-bold mb-1">💡 Streaming Tips</h1>
-          <p className="text-gray-400 mb-8">
-            Follow these tips to grow your audience and stream like a pro.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tips.map((tip, i) => (
-              <div
-                key={i}
-                className="bg-gray-900 border border-gray-800 hover:border-purple-600 transition rounded-2xl p-5 flex items-start gap-4"
-              >
-                <div className="bg-gray-800 rounded-xl p-3 text-2xl leading-none">
-                  {tip.icon}
-                </div>
-                <div>
-                  <p className="font-semibold text-white mb-1">{tip.title}</p>
-                  <p className="text-sm text-gray-400 leading-relaxed">{tip.text}</p>
-                </div>
-              </div>
-            ))}
+    <AppLayout
+      title="Streaming Tips"
+      subtitle="Follow these tips to grow your audience and stream like a pro."
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {tips.map((tip, i) => (
+          <div
+            key={i}
+            className="card p-5 flex items-start gap-4 hover:border-violet-200 transition"
+          >
+            <div className="bg-slate-100 rounded-xl p-3 text-2xl leading-none">
+              {tip.icon}
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900 mb-1">{tip.title}</p>
+              <p className="text-sm text-slate-500 leading-relaxed">{tip.text}</p>
+            </div>
           </div>
-        </main>
+        ))}
       </div>
-    </div>
+    </AppLayout>
   )
 }

@@ -1,63 +1,97 @@
 import { useEffect, useState } from 'react'
 import API from '../../utils/axios'
-import Navbar from '../../components/common/Navbar'
-import Sidebar from '../../components/common/Sidebar'
+import AppLayout from '../../components/common/AppLayout'
+import { PLATFORMS as BASE_PLATFORMS } from '../../constants/platforms'
 import toast from 'react-hot-toast'
-import { Key, Eye, EyeOff, Trash2, Save, Link2, LinkIcon, CheckCircle2 } from 'lucide-react'
+import {
+  Eye, EyeOff, Trash2, Plus, X, Link2, LinkIcon, CheckCircle2, Loader2,
+} from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
-const PLATFORMS = [
-  { id: 'youtube',   label: 'YouTube',    color: '#FF0000', type: 'permanent' },
-  { id: 'twitch',    label: 'Twitch',     color: '#9146FF', type: 'permanent' },
-  { id: 'facebook',  label: 'Facebook',   color: '#1877F2', type: 'permanent' },
-  { id: 'kick',      label: 'Kick',       color: '#53FC18', type: 'permanent' },
-  { id: 'rumble',    label: 'Rumble',     color: '#85C742', type: 'permanent' },
-  { id: 'telegram',  label: 'Telegram',   color: '#229ED9', type: 'permanent' },
-  { id: 'x',         label: 'X (Twitter)',color: '#ffffff', type: 'permanent' },
-  { id: 'instagram', label: 'Instagram',  color: '#E1306C', type: 'session', needsUrl: true },
-]
+const MAX_ACCOUNTS = 15
+
+const KEY_TYPE = {
+  youtube: 'permanent', twitch: 'permanent', facebook: 'permanent',
+  kick: 'permanent', rumble: 'permanent', telegram: 'permanent', x: 'permanent',
+  instagram: 'session', tiktok: 'session', bigo: 'session',
+}
+
+const PLATFORMS = BASE_PLATFORMS.map((p) => ({
+  ...p,
+  type: KEY_TYPE[p.id] || 'permanent',
+}))
 
 const PLATFORM_NOTES = {
-  rumble: {
-    type: 'warning',
-    message: 'If streaming fails with "Invalid stream key", go to rumble.com → Live Streaming → Static Stream Keys and copy the latest key here.'
-  },
-  kick: {
-    type: 'info',
-    message: 'Kick requires both a Stream Key AND a Stream URL from your Kick dashboard. Both are saved together.'
-  },
-  instagram: {
-    type: 'warning',
-    message: 'Instagram generates a NEW key every session. Always copy a fresh key from Instagram before each stream.'
-  },
+  rumble: 'If streaming fails with "Invalid stream key", go to rumble.com → Live Streaming → Static Stream Keys and copy the latest key.',
+  kick: 'Kick requires both a Stream Key and a Stream URL from your Kick dashboard.',
+  instagram: 'Instagram generates a new key every session. Copy a fresh key before each stream.',
+  tiktok: 'TikTok is not available in India. Session keys must be refreshed before each stream.',
+  bigo: 'BIGO LIVE is not available in India. Session keys must be refreshed before each stream.',
 }
 
 const OAUTH_PLATFORMS = ['youtube', 'twitch']
 
+const emptyAddForm = () => ({ label: '', streamKey: '', rtmpUrl: '', twitchUsername: '' })
+
 export default function StreamKeysPage() {
-  const [streamKeys, setStreamKeys] = useState({})
+  const [accounts, setAccounts] = useState({})
   const [visibleKeys, setVisibleKeys] = useState({})
-  const [editKeys, setEditKeys] = useState({})
-  const [twitchUsername, setTwitchUsername] = useState('')
+  const [openAddForm, setOpenAddForm] = useState(null)
+  const [addForms, setAddForms] = useState({})
+  const [saving, setSaving] = useState(null)
+  const [deleting, setDeleting] = useState(null)
   const [loading, setLoading] = useState(true)
   const [connections, setConnections] = useState({})
   const [searchParams] = useSearchParams()
 
-  useEffect(() => {
-    API.get('/streamkeys/my')
-      .then(res => setStreamKeys(res.data))
+  const loadAccounts = () => {
+    return API.get('/streamkeys/my')
+      .then((res) => setAccounts(res.data))
       .catch(() => toast.error('Failed to load stream keys'))
-      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadAccounts().finally(() => setLoading(false))
 
     API.get('/auth/platform/status')
-      .then(res => setConnections(res.data))
+      .then((res) => setConnections(res.data))
       .catch(() => {})
 
     const connected = searchParams.get('connected')
     const error = searchParams.get('error')
-    if (connected) toast.success(`${connected} connected for live stats! ✅`)
+    if (connected) toast.success(`${connected} connected for live stats!`)
     if (error) toast.error(`Failed to connect ${error}. Try again.`)
-  }, [])
+  }, [searchParams])
+
+  const accountKey = (platformId, accountId) => `${platformId}-${accountId}`
+
+  const toggleVisibility = (platformId, accountId) => {
+    const key = accountKey(platformId, accountId)
+    setVisibleKeys((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const getAddForm = (platformId) => addForms[platformId] || emptyAddForm()
+
+  const updateAddForm = (platformId, field, value) => {
+    setAddForms((prev) => ({
+      ...prev,
+      [platformId]: { ...getAddForm(platformId), [field]: value },
+    }))
+  }
+
+  const openForm = (platformId) => {
+    setOpenAddForm(platformId)
+    setAddForms((prev) => ({ ...prev, [platformId]: emptyAddForm() }))
+  }
+
+  const closeForm = (platformId) => {
+    setOpenAddForm((current) => (current === platformId ? null : current))
+    setAddForms((prev) => {
+      const next = { ...prev }
+      delete next[platformId]
+      return next
+    })
+  }
 
   const handleOAuthConnect = async (platform) => {
     try {
@@ -71,109 +105,89 @@ export default function StreamKeysPage() {
   const handleOAuthDisconnect = async (platform) => {
     try {
       await API.delete(`/auth/platform/disconnect/${platform}`)
-      setConnections(prev => ({ ...prev, [platform]: { connected: false } }))
+      setConnections((prev) => ({ ...prev, [platform]: { connected: false } }))
       toast.success(`${platform} disconnected`)
     } catch {
       toast.error(`Failed to disconnect ${platform}`)
     }
   }
 
-  const toggleVisibility = (id) => {
-    setVisibleKeys(prev => ({ ...prev, [id]: !prev[id] }))
-  }
+  const handleSave = async (platformId) => {
+    const form = getAddForm(platformId)
+    if (!form.streamKey.trim()) return toast.error('Stream key is required')
 
-  const handleSave = async (id) => {
-    const key = editKeys[id]
-    if (!key || key.trim() === '') return toast.error('Enter a stream key first')
-    if (id === 'kick' && !editKeys['kick_rtmp_url']) {
-      return toast.error('Please enter Kick Stream URL too')
+    const platform = PLATFORMS.find((p) => p.id === platformId)
+    if (platform?.needsUrl && !form.rtmpUrl.trim()) {
+      return toast.error(`Please enter ${platform.label} Stream URL`)
     }
-    if (id === 'twitch' && !twitchUsername.trim()) {
-      return toast.error('Please enter your Twitch username too')
-    }
+
+    setSaving(platformId)
     try {
       await API.post('/streamkeys/save', {
-        platform: id,
-        streamKey: key,
-        rtmpUrl: id === 'kick' ? editKeys['kick_rtmp_url'] : undefined,
-        twitchUsername: id === 'twitch' ? twitchUsername.trim() : undefined
+        platform: platformId,
+        streamKey: form.streamKey.trim(),
+        rtmpUrl: platform?.needsUrl ? form.rtmpUrl.trim() : undefined,
+        label: form.label.trim() || undefined,
+        twitchUsername: platformId === 'twitch' && form.twitchUsername.trim()
+          ? form.twitchUsername.trim()
+          : undefined,
       })
-      toast.success(`${id} key saved!`)
-      setStreamKeys(prev => ({
-        ...prev,
-        [id]: { saved: true, streamKey: key, rtmpUrl: id === 'kick' ? editKeys['kick_rtmp_url'] : '' }
-      }))
-      setEditKeys(prev => ({ ...prev, [id]: '', kick_rtmp_url: '' }))
-      if (id === 'twitch') setTwitchUsername('')
-    } catch {
-      toast.error('Failed to save key')
+      toast.success('Account saved!')
+      closeForm(platformId)
+      await loadAccounts()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save account')
+    } finally {
+      setSaving(null)
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm(`Remove ${id} stream key?`)) return
+  const handleDelete = async (platformId, accountId, label) => {
+    if (!confirm(`Remove "${label}" from ${platformId}?`)) return
+    setDeleting(accountKey(platformId, accountId))
     try {
-      await API.delete(`/streamkeys/delete/${id}`)
-      toast.success(`${id} key removed`)
-      setStreamKeys(prev => ({ ...prev, [id]: { saved: false, streamKey: '' } }))
+      await API.delete(`/streamkeys/delete/${platformId}/${accountId}`)
+      toast.success('Account removed')
+      await loadAccounts()
     } catch {
-      toast.error('Failed to remove key')
+      toast.error('Failed to remove account')
+    } finally {
+      setDeleting(null)
     }
   }
 
-  const PlatformNote = ({ id }) => {
-    const note = PLATFORM_NOTES[id]
-    if (!note) return null
-    return (
-      <div className={`rounded-lg px-3 py-2 mb-3 flex items-start gap-2 ${
-        note.type === 'warning'
-          ? 'bg-yellow-900/20 border border-yellow-700/40'
-          : 'bg-blue-900/20 border border-blue-700/40'
-      }`}>
-        <span className="text-sm mt-0.5">{note.type === 'warning' ? '⚠️' : 'ℹ️'}</span>
-        <p className={`text-xs leading-relaxed ${note.type === 'warning' ? 'text-yellow-300' : 'text-blue-300'}`}>
-          {note.message}
-        </p>
-      </div>
-    )
-  }
-
-  const OAuthConnectButton = ({ platformId, label }) => {
+  const OAuthBanner = ({ platformId, label }) => {
     const isConnected = connections[platformId]?.connected
     const username = connections[platformId]?.username
 
     return (
-      <div className={`flex items-center justify-between rounded-lg px-3 py-2.5 mb-3 ${
-        isConnected
-          ? 'bg-green-900/20 border border-green-700/40'
-          : 'bg-purple-900/20 border border-purple-700/40'
+      <div className={`rounded-lg px-3 py-2.5 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+        isConnected ? 'bg-green-50 border border-green-200' : 'bg-violet-50 border border-violet-200'
       }`}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-2">
           {isConnected
-            ? <CheckCircle2 size={15} className="text-green-400" />
-            : <LinkIcon size={15} className="text-purple-400" />
+            ? <CheckCircle2 size={16} className="text-green-600 mt-0.5 shrink-0" />
+            : <LinkIcon size={16} className="text-violet-600 mt-0.5 shrink-0" />
           }
           <div>
-            <p className={`text-xs font-medium ${isConnected ? 'text-green-300' : 'text-purple-300'}`}>
+            <p className={`text-xs font-medium ${isConnected ? 'text-green-800' : 'text-violet-800'}`}>
               {isConnected
-                ? `Connected for Live Stats ${username ? `· @${username}` : ''}`
-                : 'Connect account to enable Live Stats'
-              }
+                ? `Connected for Live Stats${username ? ` · @${username}` : ''}`
+                : 'Connect account to enable Live Stats'}
             </p>
-            <p className="text-gray-600 text-xs">
+            <p className="text-slate-500 text-xs mt-0.5">
               {isConnected
-                ? 'Viewers, likes & chat will be tracked automatically'
-                : `Link your ${label} account to see real-time stats`
-              }
+                ? 'Viewers, likes and chat are tracked automatically'
+                : `Link your ${label} account to see real-time stats`}
             </p>
           </div>
         </div>
         <button
           onClick={() => isConnected ? handleOAuthDisconnect(platformId) : handleOAuthConnect(platformId)}
-          className={`text-xs font-medium px-3 py-1.5 rounded-lg transition ${
+          className={`text-xs font-medium px-3 py-1.5 rounded-lg transition shrink-0 ${
             isConnected
-              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-              : 'bg-purple-600 text-white hover:bg-purple-500'
+              ? 'bg-white border border-red-200 text-red-600 hover:bg-red-50'
+              : 'bg-violet-600 text-white hover:bg-violet-700'
           }`}
         >
           {isConnected ? 'Disconnect' : `Connect ${label}`}
@@ -182,153 +196,209 @@ export default function StreamKeysPage() {
     )
   }
 
-  const PlatformCard = ({ p }) => (
-    <div className="border border-gray-700 rounded-xl p-4">
-      <PlatformNote id={p.id} />
+  const PlatformCard = ({ platform }) => {
+    const platformAccounts = Array.isArray(accounts[platform.id]) ? accounts[platform.id] : []
+    const atLimit = platformAccounts.length >= MAX_ACCOUNTS
+    const isFormOpen = openAddForm === platform.id
+    const form = getAddForm(platform.id)
+    const note = PLATFORM_NOTES[platform.id]
 
-      {OAUTH_PLATFORMS.includes(p.id) && (
-        <OAuthConnectButton platformId={p.id} label={p.label} />
-      )}
-
-      <div className="flex items-center gap-2 mb-3">
-        <div style={{
-          width: 10, height: 10, borderRadius: '50%',
-          backgroundColor: p.color,
-          boxShadow: `0 0 6px ${p.color}`
-        }}></div>
-        <span className="font-medium text-sm">{p.label}</span>
-        {streamKeys[p.id]?.saved && (
-          <span className="ml-auto text-green-400 text-xs font-medium">✓ Saved</span>
-        )}
-      </div>
-
-      {streamKeys[p.id]?.saved && (
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex-1 font-mono text-xs text-gray-400 bg-gray-800 rounded-lg px-3 py-2 overflow-hidden">
-            {visibleKeys[p.id]
-              ? streamKeys[p.id]?.streamKey
-              : '••••••••••••••••••••••••••••••••'
-            }
+    return (
+      <div className="card-interactive overflow-hidden h-full flex flex-col">
+        <div className="px-4 sm:px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className={`w-3 h-3 rounded-full shrink-0 ${platform.dot}`} />
+            <h3 className="font-semibold text-gray-900">
+              {platform.label}
+              <span className="badge bg-brand-50 text-brand-700 border border-brand-100 ml-2">
+                {platformAccounts.length}/{MAX_ACCOUNTS}
+              </span>
+            </h3>
+            {platform.type === 'session' && (
+              <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                Session key
+              </span>
+            )}
           </div>
-          <button onClick={() => toggleVisibility(p.id)} className="text-gray-500 hover:text-gray-300 transition p-1">
-            {visibleKeys[p.id] ? <EyeOff size={15} /> : <Eye size={15} />}
-          </button>
-          <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:text-red-400 transition p-1">
-            <Trash2 size={15} />
-          </button>
-        </div>
-      )}
-
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder={streamKeys[p.id]?.saved ? 'Enter new key to update...' : `Paste your ${p.label} stream key`}
-          value={editKeys[p.id] || ''}
-          onChange={e => setEditKeys(prev => ({ ...prev, [p.id]: e.target.value }))}
-          className="flex-1 bg-gray-800 text-white rounded-lg px-3 py-2 text-sm outline-none border border-gray-700 focus:border-purple-500 transition"
-        />
-        <button
-          onClick={() => handleSave(p.id)}
-          className="flex items-center gap-1 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
-        >
-          <Save size={14} />
-          {streamKeys[p.id]?.saved ? 'Update' : 'Save'}
-        </button>
-      </div>
-
-      {/* Twitch username field */}
-      {p.id === 'twitch' && (
-        <div className="mt-2">
-          <label className="text-gray-500 text-xs mb-1 block">
-            Your Twitch username — needed to fetch live viewer count
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. tanushreekalla09"
-            value={twitchUsername}
-            onChange={e => setTwitchUsername(e.target.value)}
-            className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm outline-none border border-gray-700 focus:border-purple-500 transition"
-          />
-        </div>
-      )}
-
-      {/* Kick stream URL field */}
-      {p.id === 'kick' && (
-        <div className="mt-2">
-          <label className="text-gray-500 text-xs mb-1 block">
-            Kick Stream URL (from your Kick dashboard)
-          </label>
-          <input
-            type="text"
-            placeholder="rtmps://xxxxx.global-contribute.live-video.net/"
-            value={editKeys['kick_rtmp_url'] || ''}
-            onChange={e => setEditKeys(prev => ({ ...prev, kick_rtmp_url: e.target.value }))}
-            className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm outline-none border border-gray-700 focus:border-purple-500 transition"
-          />
-          {streamKeys['kick']?.saved && streamKeys['kick']?.rtmpUrl && (
-            <p className="text-green-400 text-xs mt-1">✓ Stream URL saved: {streamKeys['kick'].rtmpUrl}</p>
+          {!atLimit && (
+            <button
+              onClick={() => isFormOpen ? closeForm(platform.id) : openForm(platform.id)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg transition"
+            >
+              {isFormOpen ? <X size={14} /> : <Plus size={14} />}
+              {isFormOpen ? 'Cancel' : 'Add Account'}
+            </button>
           )}
         </div>
-      )}
-    </div>
-  )
+
+        <div className="px-4 sm:px-5 py-4">
+          {OAUTH_PLATFORMS.includes(platform.id) && (
+            <OAuthBanner platformId={platform.id} label={platform.label} />
+          )}
+
+          {note && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800 leading-relaxed">
+              {note}
+            </div>
+          )}
+
+          <div
+            className={`grid transition-all duration-200 ease-out ${
+              isFormOpen ? 'grid-rows-[1fr] opacity-100 mb-4' : 'grid-rows-[0fr] opacity-0 mb-0'
+            }`}
+          >
+            <div className="overflow-hidden">
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-medium text-slate-700">New {platform.label} account</p>
+              <input
+                type="text"
+                placeholder="Label (e.g. Main Channel, Gaming Channel)"
+                value={form.label}
+                onChange={(e) => updateAddForm(platform.id, 'label', e.target.value)}
+                className="input-field rounded-lg py-2"
+              />
+              <input
+                type="text"
+                placeholder={`${platform.label} stream key`}
+                value={form.streamKey}
+                onChange={(e) => updateAddForm(platform.id, 'streamKey', e.target.value)}
+                className="input-field rounded-lg py-2 font-mono"
+              />
+              {platform.needsUrl && (
+                <input
+                  type="text"
+                  placeholder={`${platform.label} Stream URL (rtmps://...)`}
+                  value={form.rtmpUrl}
+                  onChange={(e) => updateAddForm(platform.id, 'rtmpUrl', e.target.value)}
+                  className="input-field rounded-lg py-2 font-mono"
+                />
+              )}
+              {platform.id === 'twitch' && (
+                <input
+                  type="text"
+                  placeholder="Twitch username (for live viewer count)"
+                  value={form.twitchUsername}
+                  onChange={(e) => updateAddForm(platform.id, 'twitchUsername', e.target.value)}
+                  className="input-field rounded-lg py-2"
+                />
+              )}
+              <button
+                onClick={() => handleSave(platform.id)}
+                disabled={saving === platform.id}
+                className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+              >
+                {saving === platform.id ? <Loader2 size={14} className="animate-spin" /> : null}
+                Save Account
+              </button>
+            </div>
+            </div>
+          </div>
+
+          {platformAccounts.length === 0 ? (
+            <p className="text-sm text-slate-500 py-2">
+              No accounts saved yet. Click &quot;Add Account&quot; to get started.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {platformAccounts.map((acc) => {
+                const visKey = accountKey(platform.id, acc.accountId)
+                const isVisible = visibleKeys[visKey]
+                const isDeleting = deleting === visKey
+
+                return (
+                  <li
+                    key={acc.accountId}
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-slate-900 truncate">{acc.label}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="flex-1 font-mono text-xs text-slate-500 truncate">
+                          {isVisible ? acc.streamKey : '••••••••••••••••••••••••'}
+                        </p>
+                        <button
+                          onClick={() => toggleVisibility(platform.id, acc.accountId)}
+                          className="text-slate-400 hover:text-slate-600 p-1 shrink-0"
+                          aria-label={isVisible ? 'Hide key' : 'Show key'}
+                        >
+                          {isVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
+                      {acc.rtmpUrl && (
+                        <p className="text-xs text-slate-400 mt-1 truncate font-mono">{acc.rtmpUrl}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDelete(platform.id, acc.accountId, acc.label)}
+                      disabled={isDeleting}
+                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition shrink-0 self-start sm:self-center disabled:opacity-60"
+                    >
+                      {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Delete
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+
+          {atLimit && (
+            <p className="text-xs text-slate-400 mt-3">Maximum {MAX_ACCOUNTS} accounts reached for this platform.</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const permanentPlatforms = PLATFORMS.filter((p) => p.type === 'permanent')
+  const sessionPlatforms = PLATFORMS.filter((p) => p.type === 'session')
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Key size={28} className="text-purple-400" />
-            Stream Keys
-          </h1>
-          <p className="text-gray-400 mb-2">
-            Save your stream keys here — they will auto-fill on the Go Live page.
-          </p>
-
-          <div className="bg-purple-900/20 border border-purple-700/40 rounded-xl px-4 py-3 mb-8 flex items-center gap-3">
-            <Link2 size={16} className="text-purple-400 shrink-0" />
-            <p className="text-purple-300 text-sm">
-              Connect your <strong>YouTube</strong> and <strong>Twitch</strong> accounts below to enable real-time Live Stats tracking — viewers, likes, chat history and more.
+    <AppLayout
+      title="Stream Keys"
+      subtitle={`Manage multiple accounts per platform — up to ${MAX_ACCOUNTS} each.`}
+      maxWidth="max-w-5xl"
+    >
+          <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
+            <Link2 size={18} className="text-violet-600 shrink-0 mt-0.5" />
+            <p className="text-violet-800 text-sm">
+              Connect <strong>YouTube</strong> and <strong>Twitch</strong> for real-time Live Stats.
+              Stream keys and OAuth connections are managed separately.
             </p>
           </div>
 
           {loading ? (
-            <p className="text-gray-500">Loading...</p>
+            <div className="flex items-center gap-2 text-slate-500 py-12 justify-center">
+              <Loader2 size={20} className="animate-spin" />
+              Loading accounts...
+            </div>
           ) : (
-            <div className="space-y-6">
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-                <h2 className="text-base font-semibold mb-1 text-green-400">
-                  ✓ Permanent Keys — save once, use forever
-                </h2>
-                <p className="text-gray-500 text-xs mb-4">
-                  These platforms give you a permanent stream key that never changes unless you manually reset it.
+            <div className="space-y-8">
+              <section>
+                <h2 className="text-base font-semibold text-slate-800 mb-1">Permanent Keys</h2>
+                <p className="text-slate-500 text-xs sm:text-sm mb-4">
+                  Save once and reuse — keys stay valid until you reset them on the platform.
                 </p>
-                <div className="space-y-4">
-                  {PLATFORMS.filter(p => p.type === 'permanent').map(p => (
-                    <PlatformCard key={p.id} p={p} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {permanentPlatforms.map((p) => (
+                    <PlatformCard key={p.id} platform={p} />
                   ))}
                 </div>
-              </div>
+              </section>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-                <h2 className="text-base font-semibold mb-1 text-yellow-400">
-                  ⚡ Session Keys — must update before each stream
-                </h2>
-                <p className="text-gray-500 text-xs mb-4">
-                  These platforms generate a new key every time you go live. Save the latest key before each stream.
+              <section>
+                <h2 className="text-heading text-gray-900 mb-1">Session Keys</h2>
+                <p className="text-caption text-gray-500 mb-4">
+                  New key each session — update before going live.
                 </p>
-                <div className="space-y-4">
-                  {PLATFORMS.filter(p => p.type === 'session').map(p => (
-                    <PlatformCard key={p.id} p={p} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {sessionPlatforms.map((p) => (
+                    <PlatformCard key={p.id} platform={p} />
                   ))}
                 </div>
-              </div>
+              </section>
             </div>
           )}
-        </main>
-      </div>
-    </div>
+    </AppLayout>
   )
 }

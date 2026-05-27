@@ -3,20 +3,20 @@ import { ArrowLeft, Radio } from 'lucide-react'
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <nav className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <nav className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <div className="bg-purple-600 p-1.5 rounded-lg"><Radio size={18} /></div>
-          <span className="text-xl font-bold text-purple-500">StreamSync</span>
+          <div className="bg-violet-600 p-1.5 rounded-lg"><Radio size={18} className="text-white" /></div>
+          <span className="text-xl font-bold text-violet-600">StreamSync</span>
         </Link>
-        <Link to="/register" className="flex items-center gap-1 text-gray-400 hover:text-white text-sm transition">
+        <Link to="/register" className="flex items-center gap-1 text-slate-500 hover:text-violet-600 text-sm transition">
           <ArrowLeft size={15} /> Back to Register
         </Link>
       </nav>
 
       <main className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-4xl font-black mb-2">Terms & Conditions</h1>
-        <p className="text-gray-500 text-sm mb-10">Last updated: May 2026</p>
+        <h1 className="text-4xl font-black mb-2 text-slate-900">Terms & Conditions</h1>
+        <p className="text-slate-500 text-sm mb-10">Last updated: May 2026</p>
 
         {[
           {
@@ -65,17 +65,17 @@ export default function TermsPage() {
           },
         ].map(section => (
           <div key={section.title} className="mb-8">
-            <h2 className="text-lg font-bold text-purple-400 mb-3">{section.title}</h2>
-            <p className="text-gray-400 leading-relaxed">{section.content}</p>
+            <h2 className="text-lg font-bold text-violet-600 mb-3">{section.title}</h2>
+            <p className="text-slate-600 leading-relaxed">{section.content}</p>
           </div>
         ))}
 
-        <div className="mt-12 pt-8 border-t border-gray-800 text-center">
+        <div className="mt-12 pt-8 border-t border-slate-200 text-center">
           <Link
             to="/register"
-            className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-3 rounded-xl transition inline-block"
+            className="btn-primary px-8 py-3 inline-block"
           >
-            I've read the terms — Back to Register
+            I&apos;ve read the terms — Back to Register
           </Link>
         </div>
       </main>

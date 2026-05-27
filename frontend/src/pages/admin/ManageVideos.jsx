@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import API from '../../utils/axios'
-import Navbar from '../../components/common/Navbar'
-import Sidebar from '../../components/common/Sidebar'
+import AppLayout from '../../components/common/AppLayout'
 import toast from 'react-hot-toast'
 import { Film, Play, Trash2 } from 'lucide-react'
 import VideoModal from '../../components/video/VideoModal'
+import { SkeletonTable } from '../../components/ui/Skeleton'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function ManageVideos() {
   const [videos, setVideos] = useState([])
@@ -26,14 +27,14 @@ export default function ManageVideos() {
   }
 
   const handleDelete = async (e, id, title) => {
-    e.stopPropagation() // prevent opening preview modal
+    e.stopPropagation()
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
     setDeletingId(id)
     try {
       await API.delete(`/admin/videos/${id}`)
       toast.success('Video deleted')
       setVideos(prev => prev.filter(v => v._id !== id))
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete video')
     } finally {
       setDeletingId(null)
@@ -41,74 +42,81 @@ export default function ManageVideos() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
+    <AppLayout
+      title="Manage Videos"
+      subtitle="All videos uploaded by users. Click to preview."
+    >
+      <div className="card p-4 sm:p-6">
+        <h2 className="text-heading text-gray-900 mb-4 flex items-center gap-2 flex-wrap">
+          <Film size={18} className="text-brand-600" />
+          All Videos
+          <span className="ml-auto text-caption text-gray-500 font-normal">Click any row to preview</span>
+        </h2>
 
-          <h1 className="text-3xl font-bold mb-2">Manage Videos</h1>
-          <p className="text-gray-400 mb-8">All videos uploaded by users. Click to preview.</p>
-
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Film size={18} className="text-purple-400" />
-              All Videos
-              <span className="ml-auto text-xs text-gray-500">Click any video to preview</span>
-            </h2>
-
-            {loading ? (
-              <p className="text-gray-500">Loading...</p>
-            ) : videos.length === 0 ? (
-              <p className="text-gray-500">No videos found.</p>
-            ) : (
-              <div className="space-y-3">
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : videos.length === 0 ? (
+          <EmptyState
+            icon={Film}
+            title="No videos uploaded"
+            description="Videos uploaded by users will appear here."
+          />
+        ) : (
+          <div className="overflow-x-auto -mx-4 sm:-mx-6">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-200">
+                  <th className="text-left pb-3 px-4 sm:px-6 font-medium">Title</th>
+                  <th className="text-left pb-3 pr-4 font-medium">Uploaded By</th>
+                  <th className="text-left pb-3 pr-4 font-medium">Size</th>
+                  <th className="text-left pb-3 pr-4 font-medium">Date</th>
+                  <th className="text-left pb-3 px-4 sm:px-6 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
                 {videos.map((v) => (
-                  <div
+                  <tr
                     key={v._id}
                     onClick={() => setPreviewVideo(v)}
-                    style={{ cursor: 'pointer' }}
-                    className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-4 border border-transparent hover:border-purple-500/30 hover:bg-gray-700 transition"
+                    className="border-b border-gray-100 table-row-hover cursor-pointer"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="bg-purple-600 p-3 rounded-xl">
-                        <Play size={16} />
+                    <td className="py-3 px-4 sm:px-6">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-brand-600 text-white p-2 rounded-lg shrink-0">
+                          <Play size={14} />
+                        </div>
+                        <span className="font-medium text-gray-900">{v.title}</span>
                       </div>
-                      <div>
-                        <p className="font-medium">{v.title}</p>
-                        <p className="text-xs text-gray-400">
-                          By {v.userId?.name} ({v.userId?.email})
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-sm text-gray-300">{formatSize(v.filesize)}</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(v.createdAt).toLocaleDateString('en-IN')}
-                        </p>
-                      </div>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <p className="text-gray-900">{v.userId?.name}</p>
+                      <p className="text-xs text-gray-500">{v.userId?.email}</p>
+                    </td>
+                    <td className="py-3 pr-4 text-gray-700">{formatSize(v.filesize)}</td>
+                    <td className="py-3 pr-4 text-gray-500">
+                      {new Date(v.createdAt).toLocaleDateString('en-IN')}
+                    </td>
+                    <td className="py-3 px-4 sm:px-6">
                       <button
                         onClick={(e) => handleDelete(e, v._id, v.title)}
                         disabled={deletingId === v._id}
-                        className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50"
+                        className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50"
                       >
                         <Trash2 size={13} />
                         {deletingId === v._id ? 'Deleting...' : 'Delete'}
                       </button>
-                    </div>
-                  </div>
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
-
-          {previewVideo && (
-            <VideoModal video={previewVideo} onClose={() => setPreviewVideo(null)} />
-          )}
-
-        </main>
+        )}
       </div>
-    </div>
+
+      {previewVideo && (
+        <VideoModal video={previewVideo} onClose={() => setPreviewVideo(null)} />
+      )}
+    </AppLayout>
   )
 }

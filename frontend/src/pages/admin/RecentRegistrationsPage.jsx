@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import API from '../../utils/axios'
-import Navbar from '../../components/common/Navbar'
-import Sidebar from '../../components/common/Sidebar'
+import AppLayout from '../../components/common/AppLayout'
 import toast from 'react-hot-toast'
-import { Users, ArrowRight } from 'lucide-react'
+import { ArrowRight, Users } from 'lucide-react'
+import StatCard from '../../components/ui/StatCard'
+import { SkeletonTable, SkeletonCard } from '../../components/ui/Skeleton'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function RecentRegistrationsPage() {
   const [users, setUsers] = useState([])
@@ -39,105 +41,106 @@ export default function RecentRegistrationsPage() {
   const admins = users.filter(u => u.role === 'admin').length
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
+    <AppLayout
+      title="Recent Registrations"
+      subtitle="All users who have signed up on the platform."
+    >
+      {loading ? (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+          </div>
+          <SkeletonTable rows={8} />
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <StatCard label="Total Users" value={users.length} icon={Users} accent="blue" />
+            <StatCard label="Joined Today" value={today} icon={Users} accent="emerald" />
+            <StatCard label="This Week" value={thisWeek} icon={Users} accent="brand" />
+            <StatCard label="Admins" value={admins} icon={Users} accent="amber" />
+          </div>
 
-          <h1 className="text-3xl font-bold mb-1 flex items-center gap-2">
-            <Users size={28} className="text-blue-400" /> Recent Registrations
-          </h1>
-          <p className="text-gray-400 mb-8">All users who have signed up on the platform.</p>
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="input-field w-full md:w-96"
+            />
+          </div>
 
-          {loading ? <p className="text-gray-500">Loading...</p> : (
-            <>
-              {/* Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                {[
-                  { label: 'Total Users', value: users.length, color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-                  { label: 'Joined Today', value: today, color: '#34d399', bg: 'rgba(52,211,153,0.15)' },
-                  { label: 'This Week', value: thisWeek, color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
-                  { label: 'Admins', value: admins, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-                ].map(s => (
-                  <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.color}30` }} className="rounded-2xl p-5">
-                    <p className="text-2xl font-bold">{s.value}</p>
-                    <p className="text-gray-400 text-xs mt-1">{s.label}</p>
-                  </div>
-                ))}
-              </div>
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-heading text-gray-900">All Users ({filtered.length})</h2>
+              <Link to="/admin/users" className="text-brand-600 text-sm hover:text-brand-700 flex items-center gap-1 font-medium">
+                Full Management <ArrowRight size={14} />
+              </Link>
+            </div>
 
-              {/* Search */}
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search by name or email..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-full md:w-96 bg-gray-900 border border-gray-700 text-white rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition"
-                />
-              </div>
-
-              {/* Users List */}
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">All Users ({filtered.length})</h2>
-                  <Link to="/admin/users" className="text-blue-400 text-sm hover:text-blue-300 flex items-center gap-1">
-                    Full Management <ArrowRight size={14} />
-                  </Link>
-                </div>
-
-                <div className="space-y-3">
-                  {filtered.map(u => (
-                    <div key={u._id} className="flex items-center gap-3 bg-gray-800 hover:bg-gray-700 transition rounded-xl px-4 py-3">
-                      {/* Avatar */}
-                      <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">
-                        {u.avatar
-                          ? <img src={u.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
-                          : u.name?.[0]?.toUpperCase()
-                        }
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{u.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{u.email}</p>
-                      </div>
-
-                      {/* Role */}
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${
-                        u.role === 'admin'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-700 text-gray-300'
-                      }`}>
-                        {u.role}
-                      </span>
-
-                      {/* Date */}
-                      <div className="text-right flex-shrink-0 hidden md:block">
-                        <p className="text-xs text-gray-400">
+            {filtered.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No users found"
+                description={search ? 'Try adjusting your search terms.' : 'No users have registered yet.'}
+              />
+            ) : (
+              <div className="overflow-x-auto -mx-4 sm:-mx-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-gray-200">
+                      <th className="text-left pb-3 px-4 sm:px-6 font-medium">User</th>
+                      <th className="text-left pb-3 pr-4 font-medium">Role</th>
+                      <th className="text-left pb-3 pr-4 font-medium hidden md:table-cell">Date</th>
+                      <th className="text-left pb-3 px-4 sm:px-6 font-medium hidden md:table-cell">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(u => (
+                      <tr key={u._id} className="border-b border-gray-100 table-row-hover">
+                        <td className="py-3 px-4 sm:px-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 bg-brand-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
+                              {u.avatar
+                                ? <img src={u.avatar} className="w-9 h-9 rounded-full object-cover" alt="" />
+                                : u.name?.[0]?.toUpperCase()
+                              }
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900 truncate">{u.name}</p>
+                              <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className={`badge ${
+                            u.role === 'admin'
+                              ? 'bg-brand-600 text-white'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 text-gray-500 hidden md:table-cell">
                           {new Date(u.createdAt).toLocaleDateString('en-IN', {
                             day: 'numeric', month: 'short', year: 'numeric'
                           })}
-                        </p>
-                        <p className="text-xs text-gray-600">
+                        </td>
+                        <td className="py-3 px-4 sm:px-6 text-gray-400 hidden md:table-cell">
                           {new Date(u.createdAt).toLocaleTimeString('en-IN', {
                             hour: '2-digit', minute: '2-digit'
                           })}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-
-                  {filtered.length === 0 && (
-                    <p className="text-center text-gray-500 py-8">No users found.</p>
-                  )}
-                </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </>
-          )}
-        </main>
-      </div>
-    </div>
+            )}
+          </div>
+        </>
+      )}
+    </AppLayout>
   )
 }

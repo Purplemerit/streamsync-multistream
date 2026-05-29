@@ -73,7 +73,7 @@ services:
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: streamsync-frontend
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:3010:80"
     depends_on:
       - backend
     restart: unless-stopped

@@ -111,7 +111,7 @@ multistream-app/
 
 ### Backend `.env`
 ```
-PORT=5000
+PORT=5020
 CLIENT_URL=http://localhost:5173
 MONGO_URI=your_mongodb_atlas_uri
 JWT_SECRET=your_jwt_secret
@@ -123,7 +123,7 @@ TWITCH_CLIENT_SECRET=your_twitch_client_secret
 
 ### Frontend `.env`
 ```
-VITE_API_URL=http://localhost:5000/api
+VITE_API_URL=http://localhost:5020/api
 VITE_GOOGLE_CLIENT_ID=your_google_client_id
 ```
 
@@ -152,7 +152,7 @@ npm run dev
 ```
 
 Frontend runs on `http://localhost:5173`  
-Backend runs on `http://localhost:5000`
+Backend runs on `http://localhost:5020`
 
 ---
 

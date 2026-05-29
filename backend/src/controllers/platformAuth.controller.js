@@ -12,7 +12,7 @@ const parseState = (state) => {
 const getGoogleClient = () => new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  `${process.env.SERVER_URL || 'http://localhost:5000'}/api/auth/platform/youtube/callback`
+  `${process.env.SERVER_URL || 'http://localhost:5020'}/api/auth/platform/youtube/callback`
 )
 
 const youtubeAuthURL = (req, res) => {
@@ -70,7 +70,7 @@ const twitchAuthURL = (req, res) => {
   }
   const params = new URLSearchParams({
     client_id: process.env.TWITCH_CLIENT_ID,
-    redirect_uri: `${process.env.SERVER_URL || 'http://localhost:5000'}/api/auth/platform/twitch/callback`,
+    redirect_uri: `${process.env.SERVER_URL || 'http://localhost:5020'}/api/auth/platform/twitch/callback`,
     response_type: 'code',
     scope: 'user:read:email channel:read:stream_key',
     state: encodeState(req.user._id.toString(), accountId)
@@ -88,7 +88,7 @@ const twitchCallback = async (req, res) => {
         client_secret: process.env.TWITCH_CLIENT_SECRET,
         code,
         grant_type: 'authorization_code',
-        redirect_uri: `${process.env.SERVER_URL || 'http://localhost:5000'}/api/auth/platform/twitch/callback`
+        redirect_uri: `${process.env.SERVER_URL || 'http://localhost:5020'}/api/auth/platform/twitch/callback`
       }
     })
     const { access_token, refresh_token } = tokenRes.data
